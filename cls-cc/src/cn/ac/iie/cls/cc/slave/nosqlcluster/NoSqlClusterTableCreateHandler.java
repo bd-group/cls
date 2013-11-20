@@ -15,7 +15,10 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;
@@ -60,24 +63,21 @@ public class NoSqlClusterTableCreateHandler implements SlaveHandler {
 
             Element columnsNameElt = requestParamsElt.element("columns");
 
-
             //获取column对象
             List<Element> columnNameElts = columnsNameElt.elements("column");
-            //共读取到了多少列
-            int columnCount = columnNameElts.size();
-            //用来存放name与type的内容
-            String[] columnNames = new String[columnCount];
-            String[] columnTypes = new String[columnCount];
-            int index = 0;
+            Map<String, String> tableColumns = new HashMap<String, String>();
             for (Element columnNameElt : columnNameElts) {
-                //获取name对象的内容
-                columnNames[index] = columnNameElt.element("name").getStringValue().toLowerCase();
-                //获取type对象的内容,并将其进行类型转换
-                columnTypes[index] = this.getColumnType(columnNameElt.element("type").getStringValue());
-                index++;
+                tableColumns.put(columnNameElt.element("name").getStringValue().toLowerCase(), this.getColumnType(columnNameElt.element("type").getStringValue().toLowerCase()));
             }
 
+            Element partitionByElt = requestParamsElt.element("partitionBy");
 
+            Element partitionByColumnNameElt = partitionByElt.element("columns");
+            List<Element> partitionByColumnNameElts = partitionByColumnNameElt.elements("column");
+            List<String> partitionColumns = new ArrayList<String>();
+            for (Element partitionColumnNameElt : partitionByColumnNameElts) {
+                partitionColumns.add(partitionColumnNameElt.element("name").getStringValue().toLowerCase());
+            }
             if (databaseName.isEmpty()) {
                 return FAIL_RESPONSE.replace("MESSAGE", "databaseName  is not defined");
             } else if (tableName.isEmpty()) {
@@ -98,21 +98,27 @@ public class NoSqlClusterTableCreateHandler implements SlaveHandler {
 
                 sql = "CREATE TABLE IF NOT EXISTS " + tableName + "(";
                 String bzDDPartitionKey = "";
-                for (int i = 0; i < index; i++) {
-                    if (columnNames[i].endsWith("dd") && columnTypes[i].equals("INT")) {
-                        bzDDPartitionKey = columnNames[i];
-                        continue;
-                    }
-                    if (sql.endsWith("(")) {
-                        sql += columnNames[i] + " " + columnTypes[i];
+
+                for (String partitionColumn : partitionColumns) {
+                    if (bzDDPartitionKey.isEmpty()) {
+                        bzDDPartitionKey += partitionColumn + " " + tableColumns.get(partitionColumn);
                     } else {
-                        sql += "," + columnNames[i] + " " + columnTypes[i];
+                        bzDDPartitionKey += "," + partitionColumn + " " + tableColumns.get(partitionColumn);
                     }
+                    tableColumns.remove(partitionColumn);
                 }
 
+                for (String tableColumn : tableColumns.keySet()) {
+                    if (sql.endsWith("(")) {
+                        sql += tableColumn + " " + tableColumns.get(tableColumn);
+                    } else {
+                        sql += "," + tableColumn + " " + tableColumns.get(tableColumn);
+                    }
+                }
                 sql += ",cls_input_time timestamp";
-                sql += ") COMMENT " + "'" + comment + "'";
-                sql += " PARTITIONED BY (" + (bzDDPartitionKey.isEmpty() ? "" : bzDDPartitionKey + " INT,") + "cls_input_time_dd INT)";
+                sql += ") COMMENT " + "'" + comment + "'";                
+                sql += " PARTITIONED BY (" + (bzDDPartitionKey.isEmpty() ? "" : bzDDPartitionKey+",") + "cls_input_time_dd int) ";
+                sql+=" ROW FORMAT DELIMITED FIELDS TERMINATED BY '\\t'";
                 logger.info(sql);
                 stmt.executeQuery(sql);
 

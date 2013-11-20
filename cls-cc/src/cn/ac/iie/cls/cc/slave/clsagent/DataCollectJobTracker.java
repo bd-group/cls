@@ -6,7 +6,6 @@ package cn.ac.iie.cls.cc.slave.clsagent;
 
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
 import cn.ac.iie.cls.cc.slave.variablemanager.DateManager;
-import cn.ac.iie.cls.cc.util.HttpResponseParser;
 import cn.ac.iie.cls.cc.util.XMLReader;
 import cn.ac.iie.cls.cc.util.ZooKeeperOperator;
 
