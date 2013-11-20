@@ -363,7 +363,7 @@ public class ETLJob implements Runnable {
                         try {
                             EtlWatcher.deleteTaskWatcher(etlTask.filePath);
                         } catch (SchedulerException ex) {
-                            java.util.logging.Logger.getLogger(ETLJob.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("delete task watcher unsuccessfully for " + ex.getMessage(), ex);
                         }
                         succeededETLTaskSet.put(etlTask.filePath, etlTask);
 
@@ -526,7 +526,7 @@ public class ETLJob implements Runnable {
                 }
             }
         } catch (SchedulerException ex) {
-            java.util.logging.Logger.getLogger(ETLJob.class.getName()).log(Level.SEVERE, null, ex);
+            logger.error("rewait by etlipport "+EtlIpPort+" unsuccessfully for "+ex.getMessage(), ex);
         } finally {
             etlTaskSetLock.unlock();
         }
