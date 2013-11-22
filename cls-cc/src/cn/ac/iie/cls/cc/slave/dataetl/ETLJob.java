@@ -8,7 +8,6 @@ import cn.ac.ict.ncic.util.dao.Dao;
 import cn.ac.ict.ncic.util.dao.DaoPool;
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
 import cn.ac.iie.cls.cc.monitor.EtlWatcher;
-import static cn.ac.iie.cls.cc.slave.dataetl.DataETLTaskReportHandler.logger;
 import cn.ac.iie.cls.cc.slave.dataetl.schedule.ScheduleFactory;
 import cn.ac.iie.cls.cc.slave.dataetl.schedule.StreamScheduleInterface;
 import cn.ac.iie.cls.cc.slave.dataetl.schedule.TaskItem;
@@ -58,6 +57,7 @@ public class ETLJob implements Runnable {
     private Date dispatchedTime = null;
     private Date runStartTime = null;
     private Date runEndTime = null;
+    private boolean needReport = true;
 
     public enum JobStatus {
 
@@ -81,10 +81,17 @@ public class ETLJob implements Runnable {
     private volatile boolean stop = false;
     private boolean jobSucceed = true;
     static Logger logger = null;
+    
+    
 
     static {
         PropertyConfigurator.configure("log4j.properties");
         logger = Logger.getLogger(ETLJob.class.getName());
+    }
+    
+    private ETLJob(boolean pNeedReport) {
+        this();
+        needReport = pNeedReport;
     }
 
     private ETLJob() {
@@ -102,10 +109,12 @@ public class ETLJob implements Runnable {
     public void setETLJobDescriptor(String pDescriptor) {
         dataProcessDescriptor.put(DATA_ETL_DESC, pDescriptor);
     }
+    
+    
 
-    public static ETLJob getETLJob(String pProcessJobDescriptor) {
+    public static ETLJob getETLJob(String pProcessJobDescriptor, boolean pNeedReport) {
         logger.debug(pProcessJobDescriptor);
-        ETLJob dataProcessJob = new ETLJob();
+        ETLJob dataProcessJob = new ETLJob(pNeedReport);
         try {
             Document processJobDoc = DocumentHelper.parseText(pProcessJobDescriptor);
             Element processJobInstanceElt = processJobDoc.getRootElement();
@@ -293,7 +302,6 @@ public class ETLJob implements Runnable {
                     }
                 }
             }
-
         }
     }
 
@@ -338,9 +346,11 @@ public class ETLJob implements Runnable {
     }
 
     private void reportJobStat() {
-        /*String topOperator = (String) (operatorRelationSet.get("null").iterator().next());
-        String stat = getOperatorStat(topOperator, "");
-        stat = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?><requestParams><priority>PRIORITY</priority><dispatchedTime>DISPATCHED_TIME</dispatchedTime><runStartTime>RUN_START_TIME</runStartTime><runEndTime>RUN_END_TIME</runEndTime><state>STATE</state><errorMessage></errorMessage>" + stat + "</requestParams>";
+        if (!needReport) {
+            return;
+        }
+        String stat = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?><requestParams><priority>PRIORITY</priority><dispatchedTime>DISPATCHED_TIME</dispatchedTime><runStartTime>RUN_START_TIME</runStartTime><runEndTime>RUN_END_TIME</runEndTime><state>STATE</state><errorMessage></errorMessage>#STAT</requestParams>";
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         stat = stat.replace("PRIORITY", "PROCESS_PRIORITY_NORMAL");
         stat = stat.replace("DISPATCHED_TIME", sdf.format(dispatchedTime));
         stat = stat.replace("RUN_START_TIME", sdf.format(runStartTime));
@@ -358,11 +368,19 @@ public class ETLJob implements Runnable {
             default:
                 stat = stat.replace("STATE", "UNKNOWN");
         }
+
+        Set topOperatorSet = operatorRelationSet.get("null");
+        if (topOperatorSet == null) {
+            stat = stat.replace("#STAT", "");
+        } else {
+            String topOperator = (String) (operatorRelationSet.get("null").iterator().next());
+            stat = stat.replace("#STAT", getOperatorStat(topOperator, ""));
+        }
+
         logger.info(stat);
-        System.out.println(stat);*/
         updateJobStatusInDB();
 
-        /*try {
+        try {
             HttpClient httpClient = new DefaultHttpClient();
             logger.info(RuntimeEnv.getParam(RuntimeEnv.SYSTEM_CC_ROOT_URI) + "/CoLinkage/resources/processJobInstance/" + processJobInstanceID + "/result");
             HttpPost httppost = new HttpPost(RuntimeEnv.getParam(RuntimeEnv.SYSTEM_CC_ROOT_URI) + "/CoLinkage/resources/processJobInstance/" + processJobInstanceID + "/result");
@@ -379,7 +397,7 @@ public class ETLJob implements Runnable {
             httppost.releaseConnection();
         } catch (Exception ex) {
             ex.printStackTrace();
-        }*/
+        }
     }
     
     public void updateJobStatusInDB() {
@@ -682,17 +700,7 @@ public class ETLJob implements Runnable {
                                     logger.info("etl job for data process job " + processJobInstanceID + " is finished successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task");
                                 }
                             }
-//                            if (succeededETLTaskSet.size() == 0) {
-//                                jobStatus = JobStatus.ERROR;
-//                                logger.error("etl job for data process job " + processJobInstanceID + " is finished unsuccessfully at " + runEndTime + " with " + failedETLTaskSet.size() + " failed task");
-//                            } else if (failedETLTaskSet.size() == 0) {
-//                                jobStatus = JobStatus.SUCCEED;
-//                                logger.info("etl job for data process job " + processJobInstanceID + " is finished successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task");
-//                            } else {
-//                                //fixme
-//                                jobStatus = JobStatus.ERROR;
-//                                logger.warn("etl job for data process job " + processJobInstanceID + " is finished partially successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task and " + failedETLTaskSet.size() + " failed task");
-//                            }
+
                             reportJobStat();
                             ETLJobTracker.getETLJobTracker().removeJob(this);
                             
@@ -745,7 +753,7 @@ public class ETLJob implements Runnable {
     public static void main(String[] args) {
         String dataProcessDescriptor = XMLReader.getXMLContent("trx-f_917mt-dp-spec.xml");
         System.out.println(dataProcessDescriptor);
-        ETLJob dataProcessJob = ETLJob.getETLJob(dataProcessDescriptor);
+        ETLJob dataProcessJob = ETLJob.getETLJob(dataProcessDescriptor,false);
         System.out.println(dataProcessJob.getDataProcessDescriptor().get(ETLJob.DATA_ETL_DESC));
         System.out.println("parse ok");
     }
