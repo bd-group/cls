@@ -5,6 +5,7 @@
 package cn.ac.iie.cls.etl.dataprocess.operator;
 
 import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTask;
+
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -20,15 +21,18 @@ public abstract class Operator implements Runnable {
     protected Map<String, Port> portSet = new HashMap<String, Port>();
     protected ETLTask task = null;
     protected int status;
+    protected boolean commit = false;
     public static final int STANDBY = 0;
     public static final int EXECUTING = 0;
     public static final int SUCCEEDED = 2;
     public static final int FAILED = -1;
+    
+    public volatile boolean abort = false;
 
     protected abstract void setupPorts() throws Exception;
 
     protected abstract void parseParameters(String pParameters) throws Exception;
-
+    
     public void init(String pName, String pParameters) throws Exception {
         name = pName;
         status = STANDBY;
@@ -59,7 +63,12 @@ public abstract class Operator implements Runnable {
         this.parentOperator = parentOperator;
     }
 
-    public abstract void validate() throws Exception;
+    public int getStatus()
+	{
+		return status;
+	}
+
+	public abstract void validate() throws Exception;
 
     public void setTaskManager(ETLTask pTaskManager) {
         task = pTaskManager;
@@ -85,7 +94,9 @@ public abstract class Operator implements Runnable {
     }
 
     protected abstract void execute();
-
+    public abstract void commit();
+    public abstract void start();
+    
     public void run() {
         System.out.println(name + " starts.");
         status = EXECUTING;

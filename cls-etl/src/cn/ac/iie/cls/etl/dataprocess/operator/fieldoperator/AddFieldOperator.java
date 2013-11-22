@@ -60,6 +60,16 @@ public class AddFieldOperator extends Operator {
         }
     }
 
+    @Override
+	public void start()
+	{
+		// TODO Auto-generated method stub
+		synchronized (this)
+		{
+			notifyAll();
+		}
+	}
+    
     protected void execute() {
         try {
             while (true) {
@@ -169,4 +179,11 @@ public class AddFieldOperator extends Operator {
             ex.printStackTrace();
         }
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

@@ -72,6 +72,17 @@ public class XMLFileInputOperator extends Operator {
             throw new Exception("out port with no connectors");
         }
     }
+    
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     //读取文件
     protected void execute() 
     {
@@ -96,7 +107,6 @@ public class XMLFileInputOperator extends Operator {
             }
             if (dataSet.size() > 0) {
             	portSet.get(OUT_PORT).write(dataSet);
-            	reportExecuteStatus();
             }
             System.out.println("dataSetSize = " + dataSet.size());
             status = SUCCEEDED;
@@ -111,6 +121,7 @@ public class XMLFileInputOperator extends Operator {
             	status = FAILED;
                 logger.error("Writing DataSet.EOS failed for " + ex.getMessage(), ex);
             }
+            reportExecuteStatus();
         }
     }
     
@@ -233,6 +244,11 @@ public class XMLFileInputOperator extends Operator {
         }
         
     }
+
+	@Override
+	public void commit()
+	{
+	}
     
     
 }

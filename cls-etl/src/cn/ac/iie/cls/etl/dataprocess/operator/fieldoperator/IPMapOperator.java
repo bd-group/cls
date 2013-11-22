@@ -7,15 +7,16 @@ package cn.ac.iie.cls.etl.dataprocess.operator.fieldoperator;
 import cn.ac.iie.cls.etl.dataprocess.commons.RuntimeEnv;
 import cn.ac.iie.cls.etl.dataprocess.config.Configuration;
 import cn.ac.iie.cls.etl.dataprocess.dataset.DataSet;
-import cn.ac.iie.cls.etl.dataprocess.dataset.Field;
 import cn.ac.iie.cls.etl.dataprocess.dataset.Record;
 import cn.ac.iie.cls.etl.dataprocess.dataset.StringField;
 import cn.ac.iie.cls.etl.dataprocess.operator.Operator;
 import cn.ac.iie.cls.etl.dataprocess.operator.Port;
 import cn.ac.iie.cls.etl.dataprocess.util.ip.IPUtil;
 import cn.ac.iie.cls.etl.dataprocess.util.rangesearch.RangeSearch;
+
 import com.maxmind.geoip.Location;
 import com.maxmind.geoip.LookupService;
+
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.ObjectInputStream;
@@ -24,6 +25,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;
@@ -35,7 +37,7 @@ import org.dom4j.Element;
  * @author alexmu
  */
 public class IPMapOperator extends Operator {
-    
+
     public static final String IN_PORT = "inport1";
     public static final String OUT_PORT = "outport1";
     public static final String ERROR_PORT = "error1";
@@ -48,18 +50,18 @@ public class IPMapOperator extends Operator {
     private static LookupService ipLLLocator = null;
     private static Lock ipLLLocatorLock = new ReentrantLock();
     static Logger logger = null;
-    
+
     static {
         PropertyConfigurator.configure("log4j.properties");
         logger = Logger.getLogger(IPMapOperator.class.getName());
     }
-    
+
     protected void setupPorts() throws Exception {
         setupPort(new Port(Port.INPUT, IN_PORT));
         setupPort(new Port(Port.OUTPUT, OUT_PORT));
         setupPort(new Port(Port.OUTPUT, ERROR_PORT));
     }
-    
+
     private void initIPGeoLocator() throws Exception {
         try {
             ipGeoLocatorLock.lock();
@@ -84,7 +86,7 @@ public class IPMapOperator extends Operator {
             ipGeoLocatorLock.unlock();
         }
     }
-    
+
     private void initIPVipLocator() throws Exception {
         try {
             ipVipLocatorLock.lock();
@@ -109,7 +111,7 @@ public class IPMapOperator extends Operator {
             ipVipLocatorLock.unlock();
         }
     }
-    
+
     private void initIPLLLocator() throws Exception {
         try {
             ipLLLocatorLock.lock();
@@ -123,24 +125,34 @@ public class IPMapOperator extends Operator {
             ipLLLocatorLock.unlock();
         }
     }
-    
+
     protected void init0() throws Exception {
         initIPGeoLocator();
         initIPVipLocator();
         initIPLLLocator();
     }
-    
+
     public void validate() throws Exception {
         if (getPort(OUT_PORT).getConnector().size() < 1) {
             throw new Exception("out port with no connectors");
         }
     }
+
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
     
     protected void execute() {
         try {
             while (true) {
                 DataSet dataSet = portSet.get(IN_PORT).getNext();
-                
+
                 if (dataSet.isValid()) {
                     int dataSize = dataSet.size();
                     for (Field2IPMap field2IPMap : field2IPMapSet) {
@@ -149,8 +161,7 @@ public class IPMapOperator extends Operator {
                             dataSet.putFieldName2Idx(field2IPMap.dstFieldName, dataSetFieldNum);
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
-                                Field field = record.getField(field2IPMap.srcFieldName);
-                                long ipLongValue = field2IPMap.srcFieldType.equals("String") ? IPUtil.IPV4Str2Long(field == null ? null : field.toString()) : Long.parseLong(field == null ? null : field.toString());
+                                long ipLongValue = field2IPMap.srcFieldType.equals("STRING") ? IPUtil.IPV4Str2Long(record.getField(field2IPMap.srcFieldName).toString()) : Long.parseLong(record.getField(field2IPMap.srcFieldName).toString());
                                 String country = ipGeoLocator.getValue(ipLongValue, "country");
                                 record.appendField(country == null ? null : new StringField(country));
                             }
@@ -159,8 +170,7 @@ public class IPMapOperator extends Operator {
                             dataSet.putFieldName2Idx(field2IPMap.dstFieldName, dataSetFieldNum);
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
-                                Field field = record.getField(field2IPMap.srcFieldName);
-                                long ipLongValue = field2IPMap.srcFieldType.equals("String") ? IPUtil.IPV4Str2Long(field == null ? null : field.toString()) : Long.parseLong(field == null ? null : field.toString());
+                                long ipLongValue = field2IPMap.srcFieldType.equals("STRING") ? IPUtil.IPV4Str2Long(record.getField(field2IPMap.srcFieldName).toString()) : Long.parseLong(record.getField(field2IPMap.srcFieldName).toString());
                                 String district = ipGeoLocator.getValue(ipLongValue, "district");
                                 record.appendField(district == null ? null : new StringField(district));
                             }
@@ -169,8 +179,7 @@ public class IPMapOperator extends Operator {
                             dataSet.putFieldName2Idx(field2IPMap.dstFieldName, dataSetFieldNum);
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
-                                Field field = record.getField(field2IPMap.srcFieldName);
-                                long ipLongValue = field2IPMap.srcFieldType.equals("String") ? IPUtil.IPV4Str2Long(field == null ? null : field.toString()) : Long.parseLong(field == null ? null : field.toString());
+                                long ipLongValue = field2IPMap.srcFieldType.equals("STRING") ? IPUtil.IPV4Str2Long(record.getField(field2IPMap.srcFieldName).toString()) : Long.parseLong(record.getField(field2IPMap.srcFieldName).toString());
                                 String isp = ipGeoLocator.getValue(ipLongValue, "isp");
                                 record.appendField(isp == null ? null : new StringField(isp));
                             }
@@ -179,8 +188,7 @@ public class IPMapOperator extends Operator {
                             dataSet.putFieldName2Idx(field2IPMap.dstFieldName, dataSetFieldNum);
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
-                                Field field = record.getField(field2IPMap.srcFieldName);
-                                long ipLongValue = field2IPMap.srcFieldType.equals("String") ? IPUtil.IPV4Str2Long(field == null ? null : field.toString()) : Long.parseLong(field == null ? null : field.toString());
+                                long ipLongValue = field2IPMap.srcFieldType.equals("STRING") ? IPUtil.IPV4Str2Long(record.getField(field2IPMap.srcFieldName).toString()) : Long.parseLong(record.getField(field2IPMap.srcFieldName).toString());
                                 Location location = ipLLLocator.getLocation(ipLongValue);
                                 record.appendField(location == null ? null : new StringField(String.valueOf(location.longitude)));
                             }
@@ -189,8 +197,7 @@ public class IPMapOperator extends Operator {
                             dataSet.putFieldName2Idx(field2IPMap.dstFieldName, dataSetFieldNum);
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
-                                Field field = record.getField(field2IPMap.srcFieldName);
-                                long ipLongValue = field2IPMap.srcFieldType.equals("String") ? IPUtil.IPV4Str2Long(field == null ? null : field.toString()) : Long.parseLong(field == null ? null : field.toString());
+                                long ipLongValue = field2IPMap.srcFieldType.equals("STRING") ? IPUtil.IPV4Str2Long(record.getField(field2IPMap.srcFieldName).toString()) : Long.parseLong(record.getField(field2IPMap.srcFieldName).toString());
                                 Location location = ipLLLocator.getLocation(ipLongValue);
                                 record.appendField(location == null ? null : new StringField(String.valueOf(location.latitude)));
                             }
@@ -199,8 +206,7 @@ public class IPMapOperator extends Operator {
                             dataSet.putFieldName2Idx(field2IPMap.dstFieldName, dataSetFieldNum);
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
-                                Field field = record.getField(field2IPMap.srcFieldName);
-                                long ipLongValue = field2IPMap.srcFieldType.equals("String") ? IPUtil.IPV4Str2Long(field == null ? null : field.toString()) : Long.parseLong(field == null ? null : field.toString());
+                                long ipLongValue = field2IPMap.srcFieldType.equals("STRING") ? IPUtil.IPV4Str2Long(record.getField(field2IPMap.srcFieldName).toString()) : Long.parseLong(record.getField(field2IPMap.srcFieldName).toString());
                                 List<String> vipidLst = ipVipLocator.getValues(ipLongValue);
                                 String vipidsStr = ",";
                                 if (vipidLst != null) {
@@ -214,7 +220,7 @@ public class IPMapOperator extends Operator {
                             //fixme
                         }
                     }
-                    
+
                     portSet.get(OUT_PORT).write(dataSet);
                     reportExecuteStatus();
                 } else {
@@ -224,25 +230,25 @@ public class IPMapOperator extends Operator {
             }
             status = SUCCEEDED;
         } catch (Exception ex) {
-            logger.error("error happened when doing ip mapping " + ex.getMessage(), ex);
+            ex.printStackTrace();
             status = FAILED;
         } finally {
             try {
                 portSet.get(OUT_PORT).write(DataSet.getDataSet(null, DataSet.EOS));
             } catch (Exception ex2) {
                 status = FAILED;
-                logger.error("Writing DataSet.EOS is failed for" + ex2.getMessage(), ex2);
+		logger.error("Writing DataSet.EOS is failed for" + ex2.getMessage(), ex2);
             }
             reportExecuteStatus();
         }
     }
-    
+
     @Override
     protected void parseParameters(String pParameters) throws Exception {
         Document document = DocumentHelper.parseText(pParameters);
         Element operatorElt = document.getRootElement();
         Iterator parameterItor = operatorElt.element("parameterlist").elementIterator("parametermap");
-        
+
         while (parameterItor.hasNext()) {
             Element paraMapElt = (Element) parameterItor.next();
             String srcFieldName = paraMapElt.attributeValue("srcfieldname").trim();
@@ -252,14 +258,14 @@ public class IPMapOperator extends Operator {
             field2IPMapSet.add(new Field2IPMap(srcFieldName, srcFieldType, dstFieldName, locateMethod));
         }
     }
-    
+
     class Field2IPMap {
-        
+
         String srcFieldName;
         String srcFieldType;
         String dstFieldName;
         String locateMethod;
-        
+
         public Field2IPMap(String pSrcFieldName, String pSrcFieldType, String pDstFieldName, String pLocateMethod) {
             srcFieldName = pSrcFieldName;
             srcFieldType = pSrcFieldType;
@@ -267,13 +273,13 @@ public class IPMapOperator extends Operator {
             locateMethod = pLocateMethod;
         }
     }
-    
+
     public void test(long pIPN) {
         System.out.println(ipGeoLocator.getValue(pIPN, "country"));
         System.out.println(ipGeoLocator.getValue(pIPN, "district"));
         System.out.println(ipGeoLocator.getValue(pIPN, "isp"));
         List<String> vipidLst = ipVipLocator.getValues(pIPN);
-        
+
         String vipidsStr = ",";
         if (vipidLst != null) {
             for (String vipid : vipidLst) {
@@ -283,24 +289,31 @@ public class IPMapOperator extends Operator {
         System.out.println(vipidsStr);
         Location location = ipLLLocator.getLocation(pIPN);
         System.out.println(location.latitude + "," + location.longitude);
-        
+
     }
-    
+
     public static void main(String[] args) throws Exception {
         String configurationFileName = "cls-etl.properties";
         Configuration conf = Configuration.getConfiguration(configurationFileName);
         if (conf == null) {
             throw new Exception("reading " + configurationFileName + " is failed.");
         }
-        
+
         logger.info("initializng runtime enviroment...");
         if (!RuntimeEnv.initialize(conf)) {
             throw new Exception("initializng runtime enviroment is failed");
         }
         logger.info("initialize runtime enviroment successfully");
-        
+
         IPMapOperator ipMapOperator = new IPMapOperator();
         ipMapOperator.init0();
         ipMapOperator.test(2017968812L);
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

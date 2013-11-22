@@ -10,6 +10,7 @@ import cn.ac.iie.cls.etl.dataprocess.dataset.Record;
 import cn.ac.iie.cls.etl.dataprocess.dataset.StringField;
 import cn.ac.iie.cls.etl.dataprocess.operator.Operator;
 import cn.ac.iie.cls.etl.dataprocess.operator.Port;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -17,6 +18,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;
@@ -55,6 +57,16 @@ public class CutFieldOperator extends Operator {
         }
     }
 
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
         try {
             while (true) {
@@ -183,4 +195,11 @@ public class CutFieldOperator extends Operator {
             ex.printStackTrace();
         }
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

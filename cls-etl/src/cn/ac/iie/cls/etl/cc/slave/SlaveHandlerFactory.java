@@ -5,9 +5,13 @@
 package cn.ac.iie.cls.etl.cc.slave;
 
 
+import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTaskCheckStausHandler;
 import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTaskExecuteHandler;
+import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTaskResponseHandler;
+
 import java.util.HashMap;
 import java.util.Map;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
@@ -26,7 +30,9 @@ public class SlaveHandlerFactory {
     private static Map<String, Class> slaveClassSet = new HashMap<String, Class>() {
         {
             //dataetl
-            put("/etltask/execute", ETLTaskExecuteHandler.class);            
+            put("/etltask/execute", ETLTaskExecuteHandler.class);     
+            put("/etltask/response", ETLTaskResponseHandler.class);
+            put("/etltask/status", ETLTaskCheckStausHandler.class);
         }
     };
     private static Map<String, SlaveHandler> slaveObjectSet = new HashMap<String, SlaveHandler>();

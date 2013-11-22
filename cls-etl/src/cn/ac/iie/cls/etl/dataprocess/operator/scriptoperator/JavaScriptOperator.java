@@ -125,17 +125,30 @@ public class JavaScriptOperator extends Operator {
     }
 
     @Override
+	public void commit()
+   	{
+   	}
+    
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
+    @Override
     protected void execute() {
         try {
             while (true) {
             	if (null != invoke) {
-	                //DataSet dataSet = portSet.get(IN_PORT).getNext();
-	            	DataSet dataSet = DataSet.createDataSet();
+	                DataSet dataSet = portSet.get(IN_PORT).getNext();
 	                if (dataSet.isValid()) {
 	                    DataSet newdataSet = (DataSet) invoke.invokeFunction("javascriptFun", dataSet);
 	                    System.out.println("output " + newdataSet.size() + " records");
 	                    portSet.get(OUT_PORT).write(newdataSet);
-	                    reportExecuteStatus();
 	                } else {
 	                	portSet.get(OUT_PORT).write(dataSet);
 	                    break;
@@ -144,10 +157,9 @@ public class JavaScriptOperator extends Operator {
             		status = FAILED;
             		break;
             	}
-            	break;
             }
+            
             status = SUCCEEDED;
-            reportExecuteStatus();
             logger.info("javascript execute successfully");
         } catch (NoSuchMethodException ex1) {
             status = FAILED;
@@ -162,6 +174,7 @@ public class JavaScriptOperator extends Operator {
                 status = FAILED;
                 logger.error("Writing DataSet.EOS failed for " + ex2.getMessage(), ex2);
             }
+            reportExecuteStatus();
         }
     }
     

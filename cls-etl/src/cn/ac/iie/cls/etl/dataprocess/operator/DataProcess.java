@@ -5,6 +5,7 @@
 package cn.ac.iie.cls.etl.dataprocess.operator;
 
 import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTask;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -47,12 +48,20 @@ public class DataProcess extends Operator {
         }
     }
 
+    @Override
+	public void commit()
+   	{
+   	}
+    
     protected void execute() {
         System.out.println(name + " starts with " + subOperators.size() + " sub operators");
 
-        Iterator subOperatorItor = subOperators.values().iterator();
+        Iterator<Operator> subOperatorItor = subOperators.values().iterator();
         while (subOperatorItor.hasNext()) {
-            new Thread((Operator) subOperatorItor.next()).start();
+        	Operator todoOperator = (Operator) subOperatorItor.next();
+            Thread t = new Thread(todoOperator);
+            t.start();
+            task.putOperatorStore(todoOperator, t);
         }
 
         while (true) {
@@ -128,4 +137,9 @@ public class DataProcess extends Operator {
     @Override
     protected void parseParameters(String pParameters) throws Exception {
     }
+
+	@Override
+	public void start()
+	{
+	}
 }

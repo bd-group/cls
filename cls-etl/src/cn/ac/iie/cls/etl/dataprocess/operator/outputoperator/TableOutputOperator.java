@@ -4,16 +4,13 @@
  */
 package cn.ac.iie.cls.etl.dataprocess.operator.outputoperator;
 
-import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTask;
 import cn.ac.iie.cls.etl.dataprocess.commons.RuntimeEnv;
-import cn.ac.iie.cls.etl.dataprocess.config.Configuration;
 import cn.ac.iie.cls.etl.dataprocess.dataset.DataSet;
-import cn.ac.iie.cls.etl.dataprocess.dataset.Field;
 import cn.ac.iie.cls.etl.dataprocess.dataset.Record;
 import cn.ac.iie.cls.etl.dataprocess.operator.Operator;
 import cn.ac.iie.cls.etl.dataprocess.operator.Port;
-import static cn.ac.iie.cls.etl.dataprocess.operator.outputoperator.TableOutputOperator.logger;
 import cn.ac.iie.cls.etl.dataprocess.util.fs.VFSUtil;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -28,13 +25,13 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import org.apache.hadoop.hive.metastore.api.Partition;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;
 import org.dom4j.DocumentHelper;
 import org.dom4j.Element;
+
 
 /**
  *
@@ -50,7 +47,9 @@ public class TableOutputOperator extends Operator {
     private boolean isClean;
     private int rowLimit;
     private List<Field2TableOutput> field2TableOutputSet = new ArrayList<Field2TableOutput>();
+    private static Map<String, List<TableColumn>> tableSet = new HashMap<String, List<TableColumn>>();
     private String outputFormat = "";
+    String tmpDataFileName = "";
     static Logger logger = null;
 
     static {
@@ -73,117 +72,67 @@ public class TableOutputOperator extends Operator {
         }
     }
 
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
-
-        SimpleDateFormat dayFormatSDF = new SimpleDateFormat("yyyyMMddHHmmss");
-        SimpleDateFormat timestampSDF = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        Map<String, String> partitionSet = new HashMap<String, String>();
-        List<Partition> partitions = new ArrayList<Partition>();
-        Map<String, String> ds2fileSet = new HashMap<String, String>();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
         try {
-            String hdfsFilepath = dataSource + ".db/" + tableName;
-            String tmpDataFilePath = RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR) + File.separator + tableName + "_" + dayFormatSDF.format(new Date()) + "_" + UUID.randomUUID() + "_" + dataSource;
-
-            File file = new File(RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR).toString());
-            if (!file.exists()) {
-                file.mkdirs();
-            }
-            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tmpDataFilePath)), "utf-8"));
-            boolean isPartition = false;
-            if (MetaStoreProxy.getPartitionKeySize(dataSource, tableName) != 0) {
-                isPartition = true;
-            }
+            tmpDataFileName = tableName + "_" + sdf.format(new Date());
+            BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tmpDataFileName))));
             while (true) {
                 DataSet dataSet = portSet.get(IN_PORT).getNext();
-                for (int i = 0; i < dataSet.size(); i++) {
+                int dataSize = dataSet.size();
+                for (int i = 0; i < dataSize; i++) {
                     Record record = dataSet.getRecord(i);
                     String outString = outputFormat;
-                    try {
-                        for (Field2TableOutput field2TableOutput : field2TableOutputSet) {
-                            if (!field2TableOutput.streamFieldName.startsWith("cls_")) {
-                                Field field = record.getField(field2TableOutput.streamFieldName);
-                                String fieldVal = field == null ? null : field.toString();
-                                if (fieldVal == null) {
-                                    outString = outString.replaceFirst("#" + field2TableOutput.tableFieldName + "_REP#", "\\\\N");
-                                } else {
-                                    //dispose \t
-                                    fieldVal = fieldVal.replaceAll("\t", " ");
-                                    //dispose \
-                                    fieldVal = fieldVal.replaceAll("\\\\", "\\\\\\\\");
-                                    //dispose $
-                                    fieldVal = fieldVal.replaceAll("\\$", "DOLLAR_IREP");
-                                    outString = outString.replaceFirst("#" + field2TableOutput.tableFieldName + "_REP#", fieldVal);
-                                    outString = outString.replaceAll("DOLLAR_IREP", "\\$");
-                                }
-                            }
-                        }
-                    } catch (Exception ex) {
-                        logger.warn("parse record " + record + " unsuccessfully for " + ex.getMessage(), ex);
-                        continue;
+                    for (Field2TableOutput field2TableOutput : field2TableOutputSet) {
+                        String fieldVal = record.getField(field2TableOutput.streamFieldName).toString().replaceAll("\\\\", "\\\\\\\\\\\\\\\\");
+                        fieldVal = fieldVal.replaceAll(",", "\\\\\\\\,");
+                        outString = outString.replaceFirst(field2TableOutput.tableFieldName + "_REP", fieldVal);
                     }
-                    Date nowTime = new Date();
-                    outString = outString.replaceFirst("#cls_input_time_REP#", timestampSDF.format(nowTime));
-                    outString = outString.replaceFirst("#cls_input_time_dd_REP#", dayFormatSDF.format(nowTime).substring(0, 8));
-                    if (isPartition) {
-                        hdfsFilepath = dataSource + ".db/" + tableName + "/dd=" + record.getField("DD") + "/cls_input_time_dd=" + dayFormatSDF.format(nowTime).substring(0, 8);
-                        bw.write(outString + "\n");
-                        ds2fileSet.put(hdfsFilepath, tmpDataFilePath);
-                        List<String> value = new ArrayList<String>();
-                        value.add(record.getField("DD").toString());
-                        value.add(dayFormatSDF.format(nowTime).substring(0, 8));
-                        String partitionKey = record.getField("DD").toString() + dayFormatSDF.format(nowTime).substring(0, 8);
-                        if (!partitionSet.containsKey(partitionKey)) {
-                            partitions.add(MetaStoreProxy.getPartition(dataSource, tableName, value));
-                            partitionSet.put(partitionKey, partitionKey);
-                        }
-                    } else {                        
-                        bw.write(outString + "\n");
-                    }
-
+                    outString = outString.replaceFirst("dms_update_time_REP", sdf.format(new Date()));
+                    
+                    bw.write(outString + "\n");
                 }
-                if (dataSet.isValid()) {
-                    portSet.get(OUT_PORT).incMetric(dataSet.size());
-                    reportExecuteStatus();
-                } else {
-                    if (isClean) {
-                        MetaStoreProxy.truncateTable(dataSource, tableName);
-                        isClean = false;
-                    }
-                    if (isPartition) {
-                        for (String filekey : ds2fileSet.keySet()) {
-                            try {
-                                bw.close();
-                                VFSUtil.putFile(ds2fileSet.get(filekey), RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + "/user/hive/warehouse/" + filekey + "/");
-                                File tempFile = new File(ds2fileSet.get(filekey));
-                                tempFile.delete();
-                            } catch (Exception ex) {
-                                logger.warn("upload file to hadfs unsuccessfully,the file is " + tmpDataFilePath);
-                                throw new Exception("upload file to hadfs unsuccessfully " + ex.getMessage(), ex);
-                            }
-                        }
-                        MetaStoreProxy.addpartitions(partitions);
-                    } else {
-                        try {
-                            bw.close();
-                            VFSUtil.putFile(tmpDataFilePath, RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + "/user/hive/warehouse/" + hdfsFilepath + "/");
-                            File tempFile = new File(tmpDataFilePath);
-                            tempFile.delete();
-                        } catch (Exception ex) {
-                            logger.warn("upload file to hadfs unsuccessfully,the file is  " + tmpDataFilePath);
-                            throw new Exception("upload file to hadfs unsuccessfully " + ex.getMessage(), ex);
-                        }
-
-                    }
+                if (!dataSet.isValid()) {
+                    bw.close();
                     break;
                 }
-
             }
             status = SUCCEEDED;
         } catch (Exception ex) {
             status = FAILED;
-            logger.error("some error happened when doing table output for " + ex.getMessage(), ex);
+            ex.printStackTrace();
         } finally {
-            reportExecuteStatus();
+        	synchronized (this) {
+				try {
+					wait();
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+    		while (true) {
+    			if (isClean) {
+                    try {
+    					MetaStoreProxy.truncateTable(dataSource, tableName);
+    				} catch (Exception e) {
+    					// TODO Auto-generated catch block
+    					e.printStackTrace();
+    				}
+                    VFSUtil.putFile(tmpDataFileName, RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + "/user/hive/warehouse/" + tableName);
+                }
+                VFSUtil.putFile(tmpDataFileName, RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + "/user/hive/warehouse/" + tableName);
+                break;
+    		}
         }
     }
 
@@ -197,58 +146,38 @@ public class TableOutputOperator extends Operator {
             String parameterName = parameterElement.attributeValue("name");
             if (parameterName.equals("datasource")) {
                 dataSource = parameterElement.getStringValue();
-                if (dataSource.isEmpty()) {
-                    logger.warn("dataSource can not be null");
-                    throw new Exception("dataSource is null");
-                }
             } else if (parameterName.equals("tableName")) {
-                tableName = parameterElement.getStringValue().toLowerCase();
-                if (tableName.isEmpty()) {
-                    logger.warn("tableName can not be null");
-                    throw new Exception("tableName is null");
-                }
+                tableName = parameterElement.getStringValue();
             } else if (parameterName.equals("isClean")) {
                 isClean = Boolean.parseBoolean(parameterElement.getStringValue());
             } else if (parameterName.equals("rowlimit")) {
-                rowLimit = Integer.parseInt(parameterElement.getStringValue().isEmpty() ? "0" : parameterElement.getStringValue());
+                rowLimit = Integer.parseInt(parameterElement.getStringValue());
             }
         }
-        System.out.println(dataSource + "\t" + tableName);
+
         parameterItor = operatorElt.element("parameterlist").elementIterator("parametermap");
+
         while (parameterItor.hasNext()) {
             Element paraMapElt = (Element) parameterItor.next();
-            field2TableOutputSet.add(new Field2TableOutput(paraMapElt.attributeValue("streamfield").trim(), paraMapElt.attributeValue("tablefield").toLowerCase().trim()));
+            field2TableOutputSet.add(new Field2TableOutput(paraMapElt.attributeValue("streamfield"), paraMapElt.attributeValue("tablefield").toLowerCase()));
         }
-
-        field2TableOutputSet.add(new Field2TableOutput("cls_input_time", "cls_input_time"));
-        field2TableOutputSet.add(new Field2TableOutput("cls_input_time_dd", "cls_input_time_dd"));
 
         List<TableColumn> columnSet = null;
-
-        columnSet = MetaStoreProxy.getColumnList(dataSource, tableName);
-
+        synchronized (tableSet) {
+            columnSet = tableSet.get(tableName);
+            if (columnSet == null) {
+                columnSet = MetaStoreProxy.getColumnList(dataSource, tableName);
+                if (columnSet == null) {
+                    throw new Exception("no table named " + tableName);
+                }
+                tableSet.put(tableName, columnSet);
+            }
+        }
         outputFormat = MetaStoreProxy.getOutputFormat(columnSet, field2TableOutputSet);
-
     }
 
-    public static void main(String[] args) throws Exception {
-        String configurationFileName = "cls-etl.properties";
-        logger.info("initializing cls etl server...");
-        logger.info("getting configuration from configuration file " + configurationFileName);
-        Configuration conf = Configuration.getConfiguration(configurationFileName);
-        if (conf == null) {
-            throw new Exception("reading " + configurationFileName + " is failed.");
-        }
-
-        logger.info("initializng runtime enviroment...");
-        try {
-            RuntimeEnv.initialize(conf);
-        } catch (Exception ex) {
-            throw new Exception("initializng runtime enviroment is failed for " + ex.getMessage());
-        }
-
-        logger.info("initialize runtime enviroment successfully");
-        File inputXml = new File("tableOutputOperator-test-specific.xml");
+    public static void main(String[] args) {
+        File inputXml = new File("tableOutputOperator-specific.xml");
         try {
             String dataProcessDescriptor = "";
             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(inputXml)));
@@ -256,12 +185,17 @@ public class TableOutputOperator extends Operator {
             while ((line = br.readLine()) != null) {
                 dataProcessDescriptor += line;
             }
-            ETLTask etlTask = ETLTask.getETLTask(dataProcessDescriptor);
-            Thread etlTaskRunner = new Thread(etlTask);
-            etlTaskRunner.start();
+            TableOutputOperator tableOutputOperator = new TableOutputOperator();
+            tableOutputOperator.parseParameters(dataProcessDescriptor);
+            tableOutputOperator.execute();
+            System.out.println(tableOutputOperator.outputFormat);
         } catch (Exception ex) {
             ex.printStackTrace();
         }
-
     }
+
+	@Override
+	public void commit()
+	{
+	}
 }

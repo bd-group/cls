@@ -90,13 +90,26 @@ public class RecordFilterOperator extends Operator {
         return filter.isMatch(entityMap);
     }
     
+    @Override
+	public void commit()
+   	{
+   	}
+    
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
         try {
         	filter = MoqlUtils.createFilter(expression);
             while (true) {
                 DataSet dataSet = portSet.get(IN_PORT).getNext();
-            	//for test
-    			//DataSet dataSet = DataSet.createDataSet();
                 if (dataSet.isValid())
                 {
                     boolean isMapped = false;
@@ -138,8 +151,6 @@ public class RecordFilterOperator extends Operator {
                         	portSet.get(OUT_PORT).write(dataSet);
                         }
                     }
-
-                    reportExecuteStatus();
                 }
                 else {
                     portSet.get(OUT_PORT).write(dataSet);
@@ -160,6 +171,7 @@ public class RecordFilterOperator extends Operator {
             	status = FAILED;
                 logger.error("Writing DataSet.EOS failed for " + ex2.getMessage(), ex2);
             }
+            reportExecuteStatus();
         }
     }
 

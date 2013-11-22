@@ -61,6 +61,16 @@ public class IPStandardizeOperator extends Operator {
         }
     }
 
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
         try {
             while (true) {
@@ -69,7 +79,7 @@ public class IPStandardizeOperator extends Operator {
                 if (dataSet.isValid()) {
                     int dataSize = dataSet.size();
                     for (Field2IPStd field2IPStd : field2IPStdSet) {
-                        if (field2IPStd.fromPattern.equalsIgnoreCase("long") && field2IPStd.toPattern.equalsIgnoreCase("string")) {
+                        if (field2IPStd.fromPattern.equals("integer") && field2IPStd.toPattern.equals("string")) {
                             //fixme
                             Field currentFieldValue = null;
                             for (int i = 0; i < dataSize; i++) {
@@ -79,7 +89,7 @@ public class IPStandardizeOperator extends Operator {
                                     record.setField(field2IPStd.fieldName, new StringField(IPUtil.IPV4Long2Str(currentFieldValue.toString())));
                                 }
                             }
-                        } else if (field2IPStd.fromPattern.equalsIgnoreCase("string") && field2IPStd.toPattern.equalsIgnoreCase("long")) {
+                        } else if (field2IPStd.fromPattern.equals("string") && field2IPStd.toPattern.equals("integer")) {
                             Field currentFieldValue = null;
                             for (int i = 0; i < dataSize; i++) {
                                 Record record = dataSet.getRecord(i);
@@ -180,4 +190,11 @@ public class IPStandardizeOperator extends Operator {
         }
         
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

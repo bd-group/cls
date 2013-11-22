@@ -69,7 +69,6 @@ public class CLSETLServer {
 	logger.info("initializng runtime enviroment...");
 	try {
 	    RuntimeEnv.initialize(conf);
-            
 	} catch (Exception ex) {
 	    throw new Exception("initializng runtime enviroment is failed for " + ex.getMessage());
 	}

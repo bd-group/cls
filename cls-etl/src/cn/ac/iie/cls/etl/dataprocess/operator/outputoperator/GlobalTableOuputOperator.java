@@ -12,6 +12,7 @@ import cn.ac.iie.cls.etl.dataprocess.dataset.Record;
 import cn.ac.iie.cls.etl.dataprocess.operator.Operator;
 import cn.ac.iie.cls.etl.dataprocess.operator.Port;
 import cn.ac.iie.cls.etl.dataprocess.util.fs.VFSUtil;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
@@ -128,8 +130,9 @@ public class GlobalTableOuputOperator extends Operator {
 
         //validate
         List<TableColumn> columnSet = null;
-        
-        columnSet = MetaStoreProxy.getColumnList(datasourceList.get(0), tableName);
+        for (String datasourceName : datasourceList) {
+            columnSet = MetaStoreProxy.getColumnList(datasourceName, tableName);
+        }
 
         outputFormat = MetaStoreProxy.getOutputFormat(columnSet, field2TableOutputSet);
 
@@ -148,18 +151,29 @@ public class GlobalTableOuputOperator extends Operator {
     }
 
     @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
+    @Override
     protected void execute() {
         Map<String, BufferedWriter> ds2bwSet = new HashMap<String, BufferedWriter>();
         Map<String, String> ds2fileSet = new HashMap<String, String>();
+
+
         List<Partition> addPartitions = new ArrayList<Partition>();
+
+
         Map<String, String> partitionSet = new HashMap<String, String>();
+
         SimpleDateFormat dayFormatSDF = new SimpleDateFormat("yyyyMMddHHmmss");
         SimpleDateFormat timestampSDF = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        boolean isPartition = false;
         try {
-            if (MetaStoreProxy.getPartitionKeySize(datasourceDividerSet.get(0).datasource, tableName) != 0) {
-                isPartition = true;
-            }
             while (true) {
                 DataSet dataSet = portSet.get(IN_PORT).getNext();
                 List<String> fieldNameList = dataSet.getFieldNameList();
@@ -178,7 +192,7 @@ public class GlobalTableOuputOperator extends Operator {
                                     //dispose \t
                                     fieldVal = fieldVal.replaceAll("\t", " ");
                                     //dispose \
-                                    fieldVal = fieldVal.replaceAll("\\\\", "\\\\\\\\");
+                                    fieldVal = fieldVal.replaceAll("\\\\", "\\\\\\\\\\\\\\\\");
                                     //dispose $
                                     fieldVal = fieldVal.replaceAll("\\$", "DOLLAR_IREP");
                                     outString = outString.replaceFirst("#" + field2TableOutput.tableFieldName + "_REP#", fieldVal);
@@ -205,57 +219,36 @@ public class GlobalTableOuputOperator extends Operator {
                     int size = datasourceDividerSet.size();
                     String datasource = null;
                     boolean flag = false;
-
+                    String tmpDataFilePath = "";
                     for (int k = 0; k < size; k++) {
                         DatasourceDivider datasourceDivider = datasourceDividerSet.get(k);
                         datasource = datasourceDivider.getDataSource(compareFieldContent);
-
                         if (datasource != null) {
-                            if (isPartition) {
-                                String bwKey = datasource + ".db/" + tableName + "/dd=" + record.getField("DD") + "/cls_input_time_dd=" + dayFormatSDF.format(nowTime).substring(0, 8);
-                                List<String> value = new ArrayList<String>();
-                                value.add(record.getField("DD").toString());
-                                value.add(dayFormatSDF.format(nowTime).substring(0, 8));
-                                String partitionKey = record.getField("DD").toString() + dayFormatSDF.format(nowTime).substring(0, 8);
-                                if (!partitionSet.containsKey(partitionKey)) {
-                                    addPartitions.add(MetaStoreProxy.getPartition(datasource, tableName, value));
-                                    partitionSet.put(partitionKey, partitionKey);
-                                }
-                                BufferedWriter bw = null;
-                                bw = ds2bwSet.get(bwKey);
-                                if (bw == null) {
-                                    File file = new File(RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR).toString());
-                                    if (!file.exists()) {
-                                        file.mkdirs();
-                                    }
-                                    String tmpDataFilePath = RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR) + File.separator + tableName + "_" + dayFormatSDF.format(new Date()) + "_" + UUID.randomUUID() + "_" + datasource;
-
-                                    bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tmpDataFilePath)), "utf-8"));
-                                    ds2bwSet.put(bwKey, bw);
-                                    ds2fileSet.put(bwKey, tmpDataFilePath);
-                                }
-                                bw.write(outString + "\n");
-                                portSet.get(datasource).incMetric(1);
-                                flag = true;
-                            } else {
-                                String bwKey = datasource + ".db/" + tableName;
-                                BufferedWriter bw = ds2bwSet.get(bwKey);
-                                if (bw == null) {
-                                    File file = new File(RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR).toString());
-                                    if (!file.exists()) {
-                                        file.mkdirs();
-                                    }
-                                    String tmpDataFilePath = RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR) + File.separator + tableName + "_" + dayFormatSDF.format(new Date()) + "_" + UUID.randomUUID() + "_" + datasource;
-
-                                    bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tmpDataFilePath)), "utf-8"));
-                                    ds2bwSet.put(bwKey, bw);
-                                    ds2fileSet.put(bwKey, tmpDataFilePath);
-                                }
-                                bw.write(outString + "\n");
-                                portSet.get(datasource).incMetric(1);
-                                flag = true;
+                            String bwKey = datasource + ".db/" + tableName + "/dd=" + record.getField("DD") + "/cls_input_time_dd=" + dayFormatSDF.format(nowTime).substring(0, 8);
+                            List<String> value = new ArrayList<String>();
+                            value.add(record.getField("DD").toString());
+                            value.add(dayFormatSDF.format(nowTime).substring(0, 8));
+                            String partitionKey = record.getField("DD").toString() + dayFormatSDF.format(nowTime).substring(0, 8);
+                            if (!partitionSet.containsKey(partitionKey)) {
+                                addPartitions.add(MetaStoreProxy.getPartition(datasource, tableName, value));
+                                partitionSet.put(partitionKey, partitionKey);
                             }
 
+                            BufferedWriter bw = ds2bwSet.get(bwKey);
+                            if (bw == null) {
+                                File file = new File(RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR).toString());
+                                if (!file.exists()) {
+                                    file.mkdirs();
+                                }
+                                tmpDataFilePath = RuntimeEnv.getParam(RuntimeEnv.TMP_DATA_DIR) + File.separator + tableName + "_" + dayFormatSDF.format(new Date()) + "_" + UUID.randomUUID() + "_" + datasource;
+
+                                bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tmpDataFilePath)), "utf-8"));
+                                ds2bwSet.put(bwKey, bw);
+                                ds2fileSet.put(bwKey, tmpDataFilePath);
+                            }
+                            bw.write(outString + "\n");
+                            portSet.get(datasource).incMetric(1);
+                            flag = true;
                         }
                     }
 
@@ -268,12 +261,13 @@ public class GlobalTableOuputOperator extends Operator {
                     portSet.get(OUT_PORT).incMetric(dataSet.size());
                     reportExecuteStatus();
                 } else {
+                	
                     for (String bwkey : ds2bwSet.keySet()) {
                         try {
                             BufferedWriter bw = ds2bwSet.get(bwkey);
 
                             bw.close();
-
+                            
                             //create temp table
 //                            String tempTableName = MetaStoreProxy.createTempTable(datasource, tableName);
                             VFSUtil.putFile(ds2fileSet.get(bwkey), RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + "/user/hive/warehouse/" + bwkey + "/");
@@ -289,10 +283,8 @@ public class GlobalTableOuputOperator extends Operator {
                             //fixme
                             logger.warn("upload file to hadfs unsuccessfully " + ex.getMessage(), ex);
                         }
-                    }
-                    if (isPartition) {
-                        MetaStoreProxy.addpartitions(addPartitions);
-                    }
+                    }                    
+                    MetaStoreProxy.addpartitions(addPartitions);
                     break;
                 }
             }
@@ -300,8 +292,14 @@ public class GlobalTableOuputOperator extends Operator {
         } catch (Exception ex) {
             status = FAILED;
             logger.error("some error happened when doing global table output for " + ex.getMessage(), ex);
-            ex.printStackTrace();
         } finally {
+            for (String bwkey : ds2bwSet.keySet()) {
+                try {
+                    BufferedWriter bw = ds2bwSet.get(bwkey);
+                    bw.close();
+                } catch (Exception ex) {
+                }
+            }
             reportExecuteStatus();
         }
     }
@@ -342,4 +340,11 @@ public class GlobalTableOuputOperator extends Operator {
             ex.printStackTrace();
         }
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

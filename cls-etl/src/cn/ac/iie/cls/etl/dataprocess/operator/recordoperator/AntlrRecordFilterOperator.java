@@ -35,8 +35,8 @@ import cn.ac.iie.cls.etl.dataprocess.operator.Port;
  *
  * @author alexmu, hanbing
  */
-public class AntlrRecordFilterOperator extends Operator {
-
+public class AntlrRecordFilterOperator extends Operator{
+	
     public static final String IN_PORT = "inport1";
     public static final String OUT_PORT = "outport1";
     public static final String ERROR_PORT = "error1";
@@ -207,12 +207,26 @@ public class AntlrRecordFilterOperator extends Operator {
     	return false;
     }
     
+    
+    @Override
+	public void commit()
+   	{
+   	}
+    
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
         try {
         	while (true) {
-                //DataSet dataSet = portSet.get(IN_PORT).getNext();
-            	//for test
-    			DataSet dataSet = DataSet.createDataSet();
+                DataSet dataSet = portSet.get(IN_PORT).getNext();
     			DataSet matchedDataSet = dataSet.cloneDataSetWithMetadata();
     			DataSet unmatchedDataSet = dataSet.cloneDataSetWithMetadata();
                 if (dataSet.isValid())
@@ -242,6 +256,7 @@ public class AntlrRecordFilterOperator extends Operator {
                     System.out.println("----------------");
                     System.out.println("unmatchedsize = " + unmatchedDataSet.size());
                     System.out.println("matchsize = " + matchedDataSet.size());
+            
                     if (!dropErrorDataSet) 
                     {
                     	if (matchedDataSet.size() > 0) {
@@ -275,17 +290,27 @@ public class AntlrRecordFilterOperator extends Operator {
                 break;
             }
             status = SUCCEEDED;
-            reportExecuteStatus();
         } catch (Exception ex) {
         	status = FAILED;
             logger.warn("there are errors in executing the RecordFilter" + ex.getMessage(), ex);
         } finally {
+        	/*synchronized(this){
+        		try
+    			{
+    				wait();
+    			} catch (InterruptedException e)
+    			{
+    				// TODO Auto-generated catch block
+    				e.printStackTrace();
+    			}
+        	}*/
             try {
                 portSet.get(OUT_PORT).write(DataSet.getDataSet(null, DataSet.EOS));
             } catch (Exception ex2) {
             	status = FAILED;
                 logger.error("Writing DataSet.EOS failed for " + ex2.getMessage(), ex2);
             }
+            reportExecuteStatus();
         }
     }
 

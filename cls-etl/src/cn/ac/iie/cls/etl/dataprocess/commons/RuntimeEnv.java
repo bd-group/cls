@@ -25,7 +25,6 @@ public class RuntimeEnv {
     public static final String HIVE_CONN_STR = "hiveConnStr";
     public static final String TMP_DATA_DIR = "tmpDataDir";
     public static final String  META_STORE_CONN_STR="metaStoreConnStr";
-    public static final String DATASOURCE_LIST="datasourceList";
     private static Map<String, Object> dynamicParams = new HashMap<String, Object>();
     //logger
     static Logger logger = null;
@@ -64,18 +63,6 @@ public class RuntimeEnv {
         }
 
         addParam(META_STORE_CONN_STR, metaStoreConnStr);
-        
-        
-        String datasourceListStr = conf.getString(DATASOURCE_LIST, "");
-        if (datasourceListStr.isEmpty()) {
-            logger.error("parameter datasourceListStr does not exist or is not defined");
-            throw new Exception("parameter datasourceListStr does not exist or is not defined");
-        }
-
-        addParam(DATASOURCE_LIST, datasourceListStr);      
-        
-        
-        
         
         String hdfsConnStr = conf.getString(HDFS_CONN_STR, "");
         if (hdfsConnStr.isEmpty()) {

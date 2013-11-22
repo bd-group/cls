@@ -1,6 +1,11 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
 package cn.ac.iie.cls.etl.dataprocess.operator.outputoperator;
 
 import cn.ac.iie.cls.etl.dataprocess.commons.RuntimeEnv;
+import cn.ac.iie.cls.etl.dataprocess.dataset.Record;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -24,15 +29,20 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.api.AlreadyExistsException;
 import org.apache.hadoop.hive.metastore.api.Partition;
+import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
+/**
+ *
+ * @author lbh
+ */
 public class MetaStoreProxy {
 
-    private static Map<String, List<TableColumn>> tableSet = new HashMap();
-    private static Map<String, Table> dbTableSet = new HashMap();
-    private static BlockingQueue<Connection> connPool = new LinkedBlockingQueue();
+    private static Map<String, List<TableColumn>> tableSet = new HashMap<String, List<TableColumn>>();
+    private static Map<String, Table> dbTableSet = new HashMap<String, Table>();
+    private static BlockingQueue<Connection> connPool = new LinkedBlockingQueue<Connection>();
     private static HiveMetaStoreClient client = null;
     private static Lock clientLock = new ReentrantLock();
     private static int connPoolSize = 0;
@@ -44,11 +54,10 @@ public class MetaStoreProxy {
         logger = Logger.getLogger(GlobalTableOuputOperator.class.getName());
     }
 
-    public static List getColumnList(String pDatabaseName, String pTableName)
-            throws Exception {
-        List columnSet = null;
+    public static List getColumnList(String pDatabaseName, String pTableName) throws Exception {
+        List<TableColumn> columnSet = null;
         synchronized (tableSet) {
-            columnSet = (List) tableSet.get(pDatabaseName + "." + pTableName);
+            columnSet = tableSet.get(pDatabaseName + "." + pTableName);
         }
         if (columnSet == null) {
             Connection conn = null;
@@ -56,24 +65,25 @@ public class MetaStoreProxy {
             try {
                 conn = getConnection();
                 stmt = conn.createStatement();
-                columnSet = new ArrayList();
+                columnSet = new ArrayList<TableColumn>();
 
                 String sql = "";
                 boolean flag = false;
-                for (int i = 0; i < 5; ++i) {
+                for (int i = 0; i < 5; i++) {
                     try {
                         sql = "USE " + pDatabaseName;
                         logger.info(sql);
                         stmt.execute(sql);
                         flag = true;
+                        break;
                     } catch (Exception ex) {
-                        logger.warn("exe sql " + sql + " unsuccessfully for "+ex.getMessage(),ex);
-                        Thread.sleep(500L);                  
+                        Thread.sleep(500);
                     }
                 }
-                if (!(flag)) {
+                if (!flag) {
                     throw new Exception("exe sql " + sql + " unsuccessfully");
                 }
+
                 try {
                     sql = "describe " + pTableName;
                     ResultSet rs = stmt.executeQuery(sql);
@@ -85,10 +95,11 @@ public class MetaStoreProxy {
                 }
 
                 synchronized (tableSet) {
-                    if (!(tableSet.containsKey(pDatabaseName + "." + pTableName))) {
+                    if (!tableSet.containsKey(pDatabaseName + "." + pTableName)) {
                         tableSet.put(pDatabaseName + "." + pTableName, columnSet);
                     }
                 }
+
                 return columnSet;
             } finally {
                 try {
@@ -97,25 +108,25 @@ public class MetaStoreProxy {
                 }
                 closeConnection(conn);
             }
+        } else {
+            return columnSet;
         }
-        return columnSet;
     }
 
     public static String getOutputFormat(List<TableColumn> pColumnSet, List<Field2TableOutput> pField2TableOutputSet) {
+
         String outputFormat = "";
         for (TableColumn tableColumn : pColumnSet) {
             if (outputFormat.isEmpty()) {
                 outputFormat = "#" + tableColumn.name + "_VAL#";
             } else {
-                outputFormat = outputFormat + "\t#" + tableColumn.name + "_VAL#";
+                outputFormat += "\t#" + tableColumn.name + "_VAL#";
             }
         }
-
         for (Field2TableOutput field2TableOutput : pField2TableOutputSet) {
             outputFormat = outputFormat.replaceAll("#" + field2TableOutput.tableFieldName + "_VAL#", "#" + field2TableOutput.tableFieldName + "_REP#");
         }
         for (TableColumn tableColumn : pColumnSet) {
-
             if (tableColumn.name.startsWith("cls_")) {
                 outputFormat = outputFormat.replaceFirst("#" + tableColumn.name + "_VAL#", "#" + tableColumn.name + "_REP#");
             } else {
@@ -151,7 +162,6 @@ public class MetaStoreProxy {
             stmt.executeQuery(sql);
         } catch (Exception ex) {
             logger.error("truncateTable " + pTableFullName + " unsuccessfully for " + ex.getMessage(), ex);
-            throw new Exception("truncateTable " + pTableFullName + " unsuccessfully for " + ex.getMessage(), ex);
         } finally {
             try {
                 stmt.close();
@@ -161,20 +171,34 @@ public class MetaStoreProxy {
         }
     }
 
-    public static void createTempTable(String pDatabase, String pTableName,String pDicTableName) throws Exception {
+    public static String createTempTable(String pDatabase, String pTableName) throws Exception {
         Connection conn = null;
-        Statement stmt = null;       
+        Statement stmt = null;
+        String tempTableName = "";
         try {
             conn = getConnection();
             stmt = conn.createStatement();
+
             String sql = "USE " + pDatabase;
             logger.info(sql);
             stmt.executeQuery(sql);
+            //     String tempTableName = pTableName + "_" + new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()) + "_" + UUID.randomUUID().toString().replaceAll("\\-", "_");
+            tempTableName = pTableName + "_" + new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
+            List<TableColumn> columnSet = tableSet.get(pDatabase + "." + pTableName);
+            String tableFields = "";
+            for (TableColumn tableColumn : columnSet) {
+                if (tableFields.isEmpty()) {
+                    tableFields = tableColumn.name + "\t" + tableColumn.type;
+                } else {
+                    tableFields += "," + tableColumn.name + "\t" + tableColumn.type;
+                }
+            }
+            sql = "CREATE TABLE " + tempTableName + "(" + tableFields + ") row format delimited fields terminated by '\t'";
 
-            sql = "CREATE TABLE IF NOT EXISTS " + pDicTableName + " LIKE " + pTableName;
+
             logger.info(sql);
             stmt.executeQuery(sql);
-           
+
         } catch (Exception ex) {
             logger.error("Create TempTable  " + pTableName + " unsuccessfully for " + ex.getMessage(), ex);
         } finally {
@@ -184,7 +208,7 @@ public class MetaStoreProxy {
             }
             closeConnection(conn);
         }
-       
+        return tempTableName;
     }
 
     public static void moveData(String pDatabase, String pTableName, String pTempTableName) throws Exception {
@@ -203,13 +227,14 @@ public class MetaStoreProxy {
                 if (tableFields.isEmpty()) {
                     tableFields = tableColumn.name;
                 } else {
-                    tableFields = tableFields + "," + tableColumn.name;
+                    tableFields += "," + tableColumn.name;
                 }
             }
             sql = "insert into table " + pTableName + " partition(dd,cls_input_time_dd) select " + tableFields + " from " + pTempTableName;
 
             logger.info(sql);
             stmt.execute(sql);
+
         } catch (Exception ex) {
             logger.error("insert into table " + pTableName + " unsuccessfully for " + ex.getMessage(), ex);
         } finally {
@@ -219,10 +244,12 @@ public class MetaStoreProxy {
             }
             closeConnection(conn);
         }
+
+
     }
 
-    public static void droptable(String pDatabase, String pTableName)
-            throws Exception {
+    public static void droptable(String pDatabase, String pTableName) throws Exception {
+
         Connection conn = null;
         Statement stmt = null;
         try {
@@ -251,13 +278,13 @@ public class MetaStoreProxy {
         Table table = null;
         try {
             synchronized (dbTableSet) {
-                table = (Table) dbTableSet.get(pDbName + "." + pTableName);
+                table = dbTableSet.get(pDbName + "." + pTableName);
                 if (table == null) {
+                    //fixme           table==null
                     HiveMetaStoreClient msClient = null;
                     try {
-                        msClient = getHiveMetaStoreClient();
+                        msClient = MetaStoreProxy.getHiveMetaStoreClient();
                         table = msClient.getTable(pDbName, pTableName);
-
                         dbTableSet.put(pDbName + "." + pTableName, table);
                     } finally {
                         try {
@@ -270,36 +297,31 @@ public class MetaStoreProxy {
             partition.setDbName(pDbName);
             partition.setTableName(pTableName);
             partition.setValues(pValues);
-            Table tmpTable = (Table) copy(table);
-            partition.setSd(tmpTable.getSd());
 
-            partition.getSd().setSerdeInfo(tmpTable.getSd().getSerdeInfo());
-            partition.getSd().setLocation(tmpTable.getSd().getLocation() + "/dd=" + ((String) pValues.get(0)) + "/cls_input_time_dd=" + ((String) pValues.get(1)));
+//            StorageDescriptor tableSD = table.getSd();
+//            StorageDescriptor partSD = new StorageDescriptor();
+//            partSD.setCols(tableSD.getCols());
+//            partSD.setCompressed(tableSD.isCompressed());
+//            partSD.setOutputFormat(tableSD.getOutputFormat());
+//            partSD.setInputFormat(tableSD.getInputFormat());
+//            partSD.setSerdeInfo(tableSD.getSerdeInfo());
+//            partSD.setLocation(tableSD.getLocation() + "/dd=" + pValues.get(0) + "/cls_input_time_dd=" + pValues.get(1));
+//            partition.setSd(partSD);
+
+
+            Table tmpTalbe = (Table) MetaStoreProxy.copy(table);
+            partition.setSd(tmpTalbe.getSd());
+//            System.out.println("000000000000\t" + tmpTalbe.getSd().getLocation());
+            partition.getSd().setSerdeInfo(tmpTalbe.getSd().getSerdeInfo());
+            partition.getSd().setLocation(tmpTalbe.getSd().getLocation() + "/dd=" + pValues.get(0) + "/cls_input_time_dd=" + pValues.get(1));
+//            System.out.println("1111111\t" + tmpTalbe.getSd().getLocation());
+
         } catch (Exception ex) {
+            //fixme
             logger.warn("add partition to " + pTableName + "unsuccessfully");
             ex.printStackTrace();
         }
         return partition;
-    }
-
-    public static int getPartitionKeySize(String pDbName, String pTableName) throws Exception {
-        HiveMetaStoreClient msClient = null;
-        Table table = null;
-        try {
-            msClient = getHiveMetaStoreClient();
-        } catch (Exception ex) {
-            logger.warn("Hive Connection unsuccessfully");
-            throw new Exception("Hive Connection unsuccessfully for " + ex.getMessage(), ex);
-        }
-        try {
-            table = msClient.getTable(pDbName, pTableName);
-        } catch (Exception ex) {
-            logger.warn("no table named " + pTableName + " in " + pDbName);
-            throw new Exception("no table named " + pTableName + " in " + pDbName + " for " + ex.getMessage(), ex);
-
-        }
-
-        return table.getPartitionKeysSize();
     }
 
     private static Object copy(Table pTable) throws IOException, ClassNotFoundException {
@@ -313,7 +335,7 @@ public class MetaStoreProxy {
     public static void addpartitions(List<Partition> pPartitionSet) throws Exception {
         HiveMetaStoreClient msClient = null;
         try {
-            msClient = getHiveMetaStoreClient();
+            msClient = MetaStoreProxy.getHiveMetaStoreClient();
             for (Partition part : pPartitionSet) {
                 try {
                     msClient.add_partition(part);
@@ -333,7 +355,7 @@ public class MetaStoreProxy {
 
     private static Connection getConnection() throws Exception {
         Class.forName("org.apache.hadoop.hive.jdbc.HiveDriver");
-        return DriverManager.getConnection((String) RuntimeEnv.getParam("hiveConnStr"), "", "");
+        return DriverManager.getConnection((String) RuntimeEnv.getParam(RuntimeEnv.HIVE_CONN_STR), "", "");
     }
 
     private static void closeConnection(Connection conn) {
@@ -346,17 +368,66 @@ public class MetaStoreProxy {
     private static HiveMetaStoreClient getHiveMetaStoreClient() throws Exception {
         HiveMetaStoreClient msClient = null;
         try {
+//            clientLock.lock();
+//            if (client == null) {
             HiveConf hiveConf = new HiveConf();
-            hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, (String) RuntimeEnv.getParam("metaStoreConnStr"));
-
+            hiveConf.setVar(HiveConf.ConfVars.METASTOREURIS, RuntimeEnv.META_STORE_CONN_STR);
+//            hiveConf.setVar(HiveConf.ConfVars.METASTORE_CLIENT_CONNECT_RETRY_DELAY, "5000");
+//            hiveConf.setVar(HiveConf.ConfVars.METASTORE_CLIENT_SOCKET_TIMEOUT, "50000");
+//                client = new HiveMetaStoreClient(hiveConf);
+//                return client;
             msClient = new HiveMetaStoreClient(hiveConf);
+//            }
         } catch (Exception ex) {
         } finally {
+//            clientLock.unlock();
         }
+//        return client;
         return msClient;
     }
 
     private static void closeHiveMetaStoreClient(HiveMetaStoreClient pClient) {
         pClient.close();
     }
+//    private static Connection getConnection() throws Exception {
+//        try {
+//            connPoolLock.lock();
+//            Connection conn = connPool.peek();
+//            if (conn == null) {
+//                if (connPoolSize < 6) {
+//                    boolean succeed = false;
+//                    for (int tt = 0; tt < 5; tt++) {
+//                        try {
+//                            Class.forName("org.apache.hadoop.hive.jdbc.HiveDriver");
+//                            conn = DriverManager.getConnection((String) RuntimeEnv.getParam(RuntimeEnv.HIVE_CONN_STR), "", "");
+//                            succeed = true;
+//                            break;
+//                        } catch (Exception ex) {
+//                        }
+//                    }
+//
+//                    if (succeed) {
+//                        connPoolSize++;
+//                        return conn;
+//                    } else {
+//                        logger.warn("init connection to hive unsuccessfully");
+//                        return null;
+//                    }
+//                } else {
+//                    logger.info("waiting for available connection...");
+//                    return connPool.take();
+//                }
+//            } else {
+//                return connPool.take();
+//            }
+//        } finally {
+//            connPoolLock.unlock();
+//        }
+//    }
+//    private static void closeConnection(Connection conn) {
+//        try {
+//            connPool.put(conn);
+//        } catch (Exception ex) {
+//        }
+//    }
 }

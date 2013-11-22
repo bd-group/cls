@@ -61,6 +61,16 @@ public class TimeFormatOperator extends Operator {
         }
     }
 
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
         try {
             while (true) {
@@ -201,4 +211,11 @@ public class TimeFormatOperator extends Operator {
         }
         
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

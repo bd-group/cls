@@ -16,6 +16,7 @@ import static cn.ac.iie.cls.etl.dataprocess.operator.Operator.FAILED;
 import static cn.ac.iie.cls.etl.dataprocess.operator.Operator.SUCCEEDED;
 import cn.ac.iie.cls.etl.dataprocess.operator.Port;
 import cn.ac.iie.cls.etl.dataprocess.util.domaintreesearch.SubDomainNameMatch;
+
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;
@@ -261,6 +263,16 @@ public class DomainNameMapOperator extends Operator {
         }
     }
 
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     protected void execute() {
         try {
             init0();
@@ -463,4 +475,11 @@ public class DomainNameMapOperator extends Operator {
         dnmOp.init0();
 
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

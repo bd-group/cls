@@ -74,68 +74,76 @@ public class XMLFileOutputOperator extends Operator {
             throw new Exception("out port with no connectors");
         }
     }
+    
+    @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
     //读取文件
     protected void execute() 
     {
     	try{
-	    		//while(true) 
-	    		{
-		    		DataSet dataSet = portSet.get(IN_PORT).getNext();
-	    			//DataSet dataSet = DataSet.createDataSet();
-		    		OutputFormat format = OutputFormat.createPrettyPrint();
-		    		format.setEncoding(fileEncoding);
-		    		String filePath = xmlFileName;
-		    		if(fileTimestamp) {
-		    			int dotposi = filePath.lastIndexOf(".");
-		    			DateFormat dateformat= new SimpleDateFormat(timestampFormat);
-		    			filePath = filePath.substring(0, dotposi) + dateformat.format(new Date()) + ".xml";
-		    		}
-		    		XMLWriter xmlwriter = new XMLWriter(new FileOutputStream(filePath), format);
-		    		if(dataSet.isValid())
-		    		{
-			    		Document document = DocumentHelper.createDocument();
-			    		//定义根节点root
-			    		Element root = document.addElement("rows");
-			    		
-			    		for (int i=0; i<dataSet.size(); i++)
-			    		{
-			    			//定义根节点ROOT的子节点们
-			    			Element sonroot = root.addElement("row");
-			    			Record record = dataSet.getRecord(i);
-			    			for(int j=0; j<fieldnameList.size(); j++)
-			    			{
-					    		//定义子节点的子节点
-			    				String fieldname = fieldnameList.get(j);
-					    		sonroot.addElement(columnSet.get(j).getColumnName()).addText(record.getField(fieldname).toString());
-			    			}
-			    		}
-			    		
-			    		xmlwriter.write(document);
-			    		xmlwriter.flush();
-			    		
-			    		logger.info("xmlfile " + filePath + " successfully created");
-			    		status = SUCCEEDED;
-			    		reportExecuteStatus();
-		    		}
-		    		else
-		    		{
-		    			xmlwriter.close();
-		    			//目的路径是什么
-	                    VFSUtil.putFile(filePath, RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + basePath);
-	                    //break;
-		    		}
+    		while (true) {
+	    		DataSet dataSet = portSet.get(IN_PORT).getNext();
+    			//DataSet dataSet = DataSet.createDataSet();
+	    		OutputFormat format = OutputFormat.createPrettyPrint();
+	    		format.setEncoding(fileEncoding);
+	    		String filePath = xmlFileName;
+	    		if(fileTimestamp) {
+	    			int dotposi = filePath.lastIndexOf(".");
+	    			DateFormat dateformat= new SimpleDateFormat(timestampFormat);
+	    			filePath = filePath.substring(0, dotposi) + dateformat.format(new Date()) + ".xml";
 	    		}
-	    	} catch (Exception e) {
-	    			status = FAILED;
-	    			logger.error("Exception occured during of create xmlfile", e);
-	        } finally {
-	        	try {
-	                portSet.get(OUT_PORT).write(DataSet.getDataSet(null, DataSet.EOS));
-	            } catch (Exception ex2) {
-	            	status = FAILED;
-					logger.error("Writing DataSet.EOS is failed for" + ex2.getMessage(), ex2);
-	            }
-	        }
+	    		XMLWriter xmlwriter = new XMLWriter(new FileOutputStream(filePath), format);
+	    		if(dataSet.isValid())
+	    		{
+		    		Document document = DocumentHelper.createDocument();
+		    		//定义根节点root
+		    		Element root = document.addElement("rows");
+		    		
+		    		for (int i=0; i<dataSet.size(); i++)
+		    		{
+		    			//定义根节点ROOT的子节点们
+		    			Element sonroot = root.addElement("row");
+		    			Record record = dataSet.getRecord(i);
+		    			for(int j=0; j<fieldnameList.size(); j++)
+		    			{
+				    		//定义子节点的子节点
+		    				String fieldname = fieldnameList.get(j);
+				    		sonroot.addElement(columnSet.get(j).getColumnName()).addText(record.getField(fieldname).toString());
+		    			}
+		    		}
+		    		
+		    		xmlwriter.write(document);
+		    		xmlwriter.flush();
+		    		
+		    		logger.info("xmlfile " + filePath + " successfully created");
+		    		status = SUCCEEDED;
+	    		}
+	    		else
+	    		{
+	    			xmlwriter.close();
+                    VFSUtil.putFile(filePath, RuntimeEnv.getParam(RuntimeEnv.HDFS_CONN_STR) + basePath);
+	    		}
+    		}
+    	} catch (Exception e) {
+    			status = FAILED;
+    			logger.error("Exception occured during of create xmlfile", e);
+        } finally {
+        	try {
+                portSet.get(OUT_PORT).write(DataSet.getDataSet(null, DataSet.EOS));
+            } catch (Exception ex2) {
+            	status = FAILED;
+				logger.error("Writing DataSet.EOS is failed for" + ex2.getMessage(), ex2);
+            }
+        	reportExecuteStatus();
+        }
     }
     
     @Override
@@ -246,6 +254,13 @@ public class XMLFileOutputOperator extends Operator {
         }
         
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
     
     
 }

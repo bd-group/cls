@@ -5,26 +5,25 @@
 package cn.ac.iie.cls.etl.dataprocess.operator.inputoperator;
 
 import cn.ac.iie.cls.etl.cc.slave.etltask.ETLTask;
-import cn.ac.iie.cls.etl.dataprocess.commons.RuntimeEnv;
-import cn.ac.iie.cls.etl.dataprocess.config.Configuration;
 import cn.ac.iie.cls.etl.dataprocess.dataset.DataSet;
 import cn.ac.iie.cls.etl.dataprocess.dataset.FieldFactory;
 import cn.ac.iie.cls.etl.dataprocess.dataset.Record;
+import cn.ac.iie.cls.etl.dataprocess.dataset.StringField;
 import cn.ac.iie.cls.etl.dataprocess.operator.Operator;
 import cn.ac.iie.cls.etl.dataprocess.operator.Port;
 import cn.ac.iie.cls.etl.dataprocess.operator.inputoperator.Column.ColumnType;
 import cn.ac.iie.cls.etl.dataprocess.util.fs.VFSUtil;
 import cn.ac.iie.cls.etl.dataprocess.util.fs.csvfileparser.CSVFileParser;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;
@@ -69,54 +68,55 @@ public class CSVFileInputOperator extends Operator {
     }
 
     @Override
+	public void start()
+   	{
+   		// TODO Auto-generated method stub
+   		synchronized (this)
+   		{
+   			notifyAll();
+   		}
+   	}
+    
+    @Override
     protected void execute() {
         String[] line = null;
         CSVFileParser cp = null;
         Record record = null;
         String filePathStr = null;
-        File inputFile = null;
         try {
             DataSet dataSet = DataSet.getDataSet(columnSet, DataSet.VALID);
-//            DataSet errorDataSet = DataSet.getDataSet(columnSet, DataSet.VALID);
+            DataSet errorDataSet = DataSet.getDataSet(columnSet, DataSet.VALID);
             filePathStr = basePath.isEmpty() ? csvFile : basePath + File.separator + csvFile;
-            inputFile = VFSUtil.getFile(filePathStr);
+            File inputFile = VFSUtil.getFile(filePathStr);
             if (inputFile == null) {
                 reportExecuteStatus();
                 logger.warn("inputFile is null");
                 portSet.get(OUT_PORT).write(DataSet.getDataSet(columnSet, DataSet.EOS));
             } else {
                 try {
+                	System.out.println("filePathStr = " + filePathStr);
+                    System.out.println("inputFile = " + inputFile.getPath() + ", " + inputFile.getAbsolutePath());
                     cp = new CSVFileParser(inputFile, delimiter, enclosure, fileEncoding, hasHeader, trimLines);
                 } catch (Exception ex) {
                     logger.error("Creating file stream is failed for " + ex.getMessage());
                     portSet.get(OUT_PORT).write(DataSet.getDataSet(columnSet, DataSet.EOS));
                 }
                 while ((line = cp.getNext()) != null) {
-//                    if(line[line.length-1]==null&&line.length < columnSet.get(columnSet.size() - 1).columnIdx){
-                    if(line.length < columnSet.get(columnSet.size() - 1).columnIdx){    
-                      List<String> tmpList=new ArrayList<String>();
-                        tmpList.addAll(Arrays.asList(line));
-                      for(int i=line.length;i<columnSet.get(columnSet.size() - 1).columnIdx;i++){
-                          tmpList.add("null");                         
-                      }
-                      line=tmpList.toArray(new String[tmpList.size()]);
-                    }
                     record = new Record();
-//                    if (line.length < columnSet.get(columnSet.size() - 1).columnIdx) {
-//                        //fixme
-////                        for (int i = 0; i < line.length; i++) {
-////                            record.appendField(new StringField(line[i]));
-////                        }
-////                        errorDataSet.appendRecord(record);
-////                        if (errorDataSet.size() >= 1000) {
-////                            portSet.get(OUT_PORT).write(errorDataSet);
-////                            reportExecuteStatus();
-////                            dataSet = DataSet.getDataSet(columnSet, DataSet.VALID);
-////                        }
-//                        logger.warn("Wrong record in:" + Arrays.asList(line) + "\t the wrong record  in locationfilePath:" + inputFile + "\t the wrong record in  hdfsfilePath:" + filePathStr);
-//                        portSet.get(ERROR_PORT).incMetric(1);
-//                        continue;
-//                    }
+                    if (line.length < columnSet.get(columnSet.size() - 1).columnIdx) {
+                        for (int i = 0; i < line.length; i++) {
+                            record.appendField(new StringField(line[i]));
+                        }
+                        errorDataSet.appendRecord(record);
+                        logger.warn("Wrong record in " + record + "\t the wrong record in " + inputFile);
+                        if (errorDataSet.size() >= 1000) {
+                            portSet.get(OUT_PORT).write(errorDataSet);
+                            reportExecuteStatus();
+                            dataSet = DataSet.getDataSet(columnSet, DataSet.VALID);
+
+                        }
+                        continue;
+                    }
 
                     for (Column column : columnSet) {
                         record.appendField(FieldFactory.getField(line[column.columnIdx - 1], column)); //取出数据
@@ -128,10 +128,10 @@ public class CSVFileInputOperator extends Operator {
                         dataSet = DataSet.getDataSet(columnSet, DataSet.VALID);
                     }
                 }
-//                if (errorDataSet.size() > 0) {
-//                    portSet.get(OUT_PORT).write(errorDataSet);
-//                    reportExecuteStatus();
-//                }
+                if (errorDataSet.size() > 0) {
+                    portSet.get(OUT_PORT).write(errorDataSet);
+                    reportExecuteStatus();
+                }
                 if (dataSet.size() > 0) {
                     portSet.get(OUT_PORT).write(dataSet);
                     reportExecuteStatus();
@@ -154,12 +154,6 @@ public class CSVFileInputOperator extends Operator {
             } catch (Exception ex) {
                 logger.warn("Writing DataSet.EOS failed for " + ex.getMessage());
             }
-            try {
-                inputFile.delete();
-            } catch (Exception ex) {
-                logger.warn("delete tmpFile " + inputFile + " unsuccessfully for " + ex.getMessage(), ex);
-            }
-
             reportExecuteStatus();
         }
     }
@@ -192,7 +186,7 @@ public class CSVFileInputOperator extends Operator {
                     throw new Exception("fileEncoding Cannot Be Null!");
                 }
             } else if (parameterName.equals("enclosure")) {
-                enclosure = parameterElement.getStringValue().isEmpty() ? " " : parameterElement.getStringValue().trim();
+                enclosure = parameterElement.getStringValue().isEmpty() ? "" : parameterElement.getStringValue().trim();
             } else if (parameterName.equals("delimiter")) {
                 delimiter = parameterElement.getStringValue().isEmpty() ? "" : parameterElement.getStringValue().trim();
                 if (delimiter.isEmpty()) {
@@ -217,23 +211,7 @@ public class CSVFileInputOperator extends Operator {
         logger.info("Parsing  configuration file is successful");
     }
 
-    public static void main(String[] args) throws Exception {
-        String configurationFileName = "cls-etl.properties";
-        logger.info("initializing cls etl server...");
-        logger.info("getting configuration from configuration file " + configurationFileName);
-        Configuration conf = Configuration.getConfiguration(configurationFileName);
-        if (conf == null) {
-            throw new Exception("reading " + configurationFileName + " is failed.");
-        }
-
-        logger.info("initializng runtime enviroment...");
-        try {
-            RuntimeEnv.initialize(conf);
-        } catch (Exception ex) {
-            throw new Exception("initializng runtime enviroment is failed for " + ex.getMessage());
-        }
-
-        logger.info("initialize runtime enviroment successfully");
+    public static void main(String[] args) {
         File inputXml = new File("CSVFileInputOperator-test-specific.xml");
         try {
             String dataProcessDescriptor = "";
@@ -249,4 +227,11 @@ public class CSVFileInputOperator extends Operator {
             ex.printStackTrace();
         }
     }
+
+	@Override
+	public void commit()
+	{
+		// TODO Auto-generated method stub
+		
+	}
 }

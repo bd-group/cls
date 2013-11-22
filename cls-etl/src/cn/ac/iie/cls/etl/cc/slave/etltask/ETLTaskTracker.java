@@ -5,8 +5,11 @@
 package cn.ac.iie.cls.etl.cc.slave.etltask;
 
 import cn.ac.iie.cls.etl.cc.slave.status.StatusUpdate;
+import cn.ac.iie.cls.etl.dataprocess.operator.Operator;
+
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -17,7 +20,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  */
 public class ETLTaskTracker implements Runnable {
 
-    private static BlockingQueue<ETLTask> etlTaskWaitingList = new LinkedBlockingQueue<ETLTask>(1500);
+    private static BlockingQueue<ETLTask> etlTaskWaitingList = new LinkedBlockingQueue<ETLTask>();
     private static Map<String, ETLTask> etlTaskSet = new HashMap<String, ETLTask>();
     private static ETLTaskTracker etlTaskTracker = null;
 
@@ -40,6 +43,8 @@ public class ETLTaskTracker implements Runnable {
         } catch (Exception ex) {
         }
     }
+    
+
 
     public void removeTask(ETLTask pETLTask) {
         synchronized (etlTaskSet) {
@@ -64,6 +69,40 @@ public class ETLTaskTracker implements Runnable {
     }
     
     public static int getEtlTaskLength(){
-	return etlTaskWaitingList.size()+etlTaskSet.size();
+    	return etlTaskWaitingList.size()+etlTaskSet.size();
+    }
+    
+    public ETLTask getETLTask(String pTaskId) {
+    	synchronized (etlTaskSet) {
+    		return etlTaskSet.get(pTaskId);
+        }
+    }
+    
+    public static String checkTaskStatus(String taskId) {
+    	//EXECUTING/HALFSUCCEEDED/SUCCEEDED/FAILED/FINISHED
+    	if (etlTaskSet.containsKey(taskId)) {
+    		ETLTask task = etlTaskSet.get(taskId);
+    		return task.getTaskStatus();
+    	} else if(etlTaskWaitingList.contains(taskId)) {
+    		return "ENQUEUE";
+    	} else {
+    		return "FINISHED";
+    	}
+    }
+    
+    public static void stopTask(String taskId, String jobId) {
+    	//fix me
+    	ETLTask etlTask = etlTaskSet.get(jobId+"_"+taskId);
+    	etlTask.stopTask();
+    }
+    
+    public static void startTask(String taskId, String jobId) {
+    	//fix me
+    	ETLTask etlTask = etlTaskSet.get(jobId+"_"+taskId);
+    	etlTask.startTask();
+    }
+    
+    public static void pauseTask(String taskId, String jobId) {
+    	//fix me
     }
 }

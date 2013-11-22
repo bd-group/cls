@@ -36,7 +36,6 @@ import cn.ac.iie.cls.etl.dataprocess.operator.fieldoperator.TrimFieldOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.inputoperator.CSVFileInputOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.inputoperator.XMLFileInputOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.outputoperator.AlmightyOutputOperator;
-import cn.ac.iie.cls.etl.dataprocess.operator.outputoperator.DictionaryTableSynchronizationOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.outputoperator.GlobalTableOuputOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.outputoperator.TableOutputOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.outputoperator.XMLFileOutputOperator;
@@ -44,6 +43,9 @@ import cn.ac.iie.cls.etl.dataprocess.operator.recordoperator.AntlrRecordFilterOp
 import cn.ac.iie.cls.etl.dataprocess.operator.recordoperator.RecordFilterOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.recordoperator.RecordSplitOperator;
 import cn.ac.iie.cls.etl.dataprocess.operator.scriptoperator.JavaScriptOperator;
+import cn.ac.iie.cls.etl.dataprocess.operator.testoperator.Test1Operator;
+import cn.ac.iie.cls.etl.dataprocess.operator.testoperator.Test2Operator;
+import cn.ac.iie.cls.etl.dataprocess.operator.testoperator.Test3Operator;
 
 /**
  *
@@ -76,7 +78,9 @@ public class DataProcessFactory {
             put("PhoneNumberMap", PhoneNumberMapOperator.class);
             put("DomainNameMap", DomainNameMapOperator.class);
             put("IPStandard",IPStandardizeOperator.class);
-            put("DicTableOutput",DictionaryTableSynchronizationOperator.class);
+            put("Test1",Test1Operator.class);
+            put("Test2",Test2Operator.class);
+            put("Test3",Test3Operator.class);
 
         }
     };
@@ -103,9 +107,9 @@ public class DataProcessFactory {
         Map<String, List> t2fPortPairSet = new HashMap<String, List>();
         Map<String, Operator> operatorSet = new HashMap<String, Operator>();
         DataProcess dataProcess = (DataProcess) parse(pOperatorNode, f2tPortPairSet, t2fPortPairSet, operatorSet);
-//        System.out.println("f2tPortPairSet" + f2tPortPairSet);
-//        System.out.println("t2fPortPairSet" + t2fPortPairSet);
-//        System.out.println("operatorSet" + operatorSet);
+        System.out.println("f2tPortPairSet" + f2tPortPairSet);
+        System.out.println("t2fPortPairSet" + t2fPortPairSet);
+        System.out.println("operatorSet" + operatorSet);
         Iterator iter = f2tPortPairSet.entrySet().iterator();
         while (iter.hasNext()) {
             Map.Entry entry = (Map.Entry<String, String>) iter.next();

@@ -5,10 +5,12 @@
 package cn.ac.iie.cls.etl.cc.slave.etltask;
 
 import cn.ac.iie.cls.etl.cc.slave.SlaveHandler;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
@@ -28,14 +30,25 @@ public class ETLTaskExecuteHandler implements SlaveHandler {
     @Override
     public String execute(String pRequestContent) {
         String result = null;
+        for (int i=0; i<10; i++) {
+        	System.out.println("-----============new request + " + pRequestContent);
+        }
+        try {
+			Thread.sleep(2000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
         logger.info(pRequestContent);
         ETLTask etlTask = ETLTask.getETLTask(pRequestContent);
+        System.out.println("etlTask is " + etlTask);
         if (etlTask != null) {
             ETLTaskTracker.getETLTaskTracker().appendTask(etlTask);
             result = "ok";
         } else {
             result = "failed";
         }
+        System.out.println("etlTask append " + result);
         return result;
     }
 

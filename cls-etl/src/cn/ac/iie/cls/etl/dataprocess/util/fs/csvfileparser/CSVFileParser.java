@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
@@ -61,33 +60,62 @@ public class CSVFileParser {
                 hasHeader = false;
             }
             line = br.readLine();
+//            System.out.println("1111\t" + line);
             if (line == null) {   //文件结束
                 logger.info("end-of-file");
                 aryLine = null;
             } else {
-//                if (line.isEmpty()) {//空记录行的处理
-//                    line = br.readLine();
-//                    if (line == null) {  //文件结束
-//                        logger.info("end-of-file");
-//                        return null;
-//                    }
-//                }
-                if ("\\t".equalsIgnoreCase(delimiter)) {
-                    delimiter = "\t";
+                if (trimLines) {
+                    line = line.trim();
                 }
-                List<String> tokens = new ArrayList<String>();
-                tokens = enclosureSplit(line, delimiter.charAt(0), enclosure.charAt(0), enclosure.charAt(0));
-                aryLine = tokens.toArray(new String[tokens.size()]);
-                for (int i = 0; i < aryLine.length; i++) {
-                    if (aryLine[i].startsWith(enclosure)) {
-                        aryLine[i] = aryLine[i].substring(1, aryLine[i].length() - 1);
+//                System.out.println("0000000000\t"+line);
+                if (line.isEmpty()) {//空记录行的处理
+                    line = br.readLine();
+                    if (line == null) {  //文件结束
+                        logger.info("end-of-file");
+                        return null;
                     }
-                    if (aryLine[i].isEmpty() || aryLine[i].equalsIgnoreCase("null") || aryLine[i].equalsIgnoreCase("\\n")) {
-                        aryLine[i] = null;
-                    }
-                    
                 }
-               
+                if (delimiter.length() == 1) {
+                    char pattern = delimiter.charAt(0);
+                    if (pattern == '|' || pattern == '\\' || pattern == '*' || pattern == '\'' //考虑单个字符为正则表达式中转义字符的情况
+                            || pattern == '\"' || pattern == '+' || pattern == '^'
+                            || pattern == '$' || pattern == '?' || pattern == '.') //ASK--- |,\,*,',",+,^,$,?,.
+                    {
+                        delimiter = "\\" + delimiter;
+                    }
+                }
+                if ("".equals(enclosure)) {   //字段不涵包围符
+                    line = line.replaceAll("\\\\" + delimiter, (char) (delimiter.charAt(0) + 3) + "_-");
+                    aryLine = line.split(delimiter, -1);
+                    if (delimiter.equalsIgnoreCase(",")) {
+                        aryLine = forDealWithSplit(aryLine);
+                    }
+
+                    for (int i = 0; i < aryLine.length; i++) {
+                        if ("".equals(aryLine[i].trim()) || aryLine[i].trim().equalsIgnoreCase("null") || aryLine[i].trim().equalsIgnoreCase("\\n")) {
+                            aryLine[i] = null;
+                        } else if (aryLine[i].startsWith("\"")) {
+                            aryLine[i] = aryLine[i].replaceAll((char) (delimiter.charAt(0) + 3) + "_-", delimiter);
+                            aryLine[i] = aryLine[i].replaceAll("\\\\", "");
+                            aryLine[i] = aryLine[i].substring(1, aryLine[i].length() - 1);
+                        } else {
+                            aryLine[i] = aryLine[i].replaceAll((char) (delimiter.charAt(0) + 3) + "_-", delimiter);
+                            aryLine[i] = aryLine[i].replaceAll("\\\\", "");
+                        }
+                    }
+                } else {
+                    aryLine = line.split(enclosure + delimiter + enclosure);
+                    aryLine[0] = aryLine[0].substring(1, aryLine[0].length());
+                    aryLine[aryLine.length - 1] = aryLine[aryLine.length - 1].substring(0, aryLine[aryLine.length - 1].length() - 1);
+                    for (int i = 0; i < aryLine.length; i++) {
+                        if ("".equals(aryLine[i].trim())) {
+                            aryLine[i] = null;
+                        } else {
+                            aryLine[i] = aryLine[i].replaceAll("\\\\", "");
+                        }
+                    }
+                }
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -97,55 +125,32 @@ public class CSVFileParser {
         return aryLine;
     }
 
-    private List<String> enclosureSplit(String data, char separator,
-            char beginEnclosure, char endEnclosure) {
-        int match = 0;
-        int startOffset = 0;
-        boolean beginEQend = (beginEnclosure == endEnclosure);
-        List<String> tokens = new LinkedList<String>();
-
-        for (int i = 0; i < data.length(); i++) {
-            if (data.charAt(i) == beginEnclosure) {
-                if (beginEQend && match != 0) {
-                    match--;
-                } else {
-                    match++;
-                }
-            } else if (data.charAt(i) == endEnclosure) {
-                match--;
-            } else if (data.charAt(i) == separator) {
-                if (match == 0) {
-                    tokens.add(decodeEnclosure(data.substring(startOffset, i), beginEnclosure, endEnclosure));
-                    startOffset = i + 1;
+    private String[] forDealWithSplit(String[] pAryLine) {
+        StringBuffer sb = new StringBuffer();
+        List<String> list = new ArrayList<String>();
+        for (int i = 0; i < pAryLine.length; i++) {
+            if (pAryLine[i].startsWith("\"") && !pAryLine[i].endsWith("\"")) {
+                for (int j = i + 1; j < pAryLine.length; j++) {
+                    pAryLine[i] += "," + pAryLine[j];
+                    sb.append(j + ",");
+                    if (pAryLine[j].endsWith("\"")) {
+                        break;
+                    }
                 }
             }
+            list.add(pAryLine[i]);
         }
-        if (startOffset != data.length()) {
-            tokens.add(decodeEnclosure(data.substring(startOffset), beginEnclosure, endEnclosure));
-        }
-        return tokens;
-    }
-
-    private String decodeEnclosure(String data, char beginEnclosure, char endEnclosure) {
-        if (data.isEmpty()) {
-            return data;
-        }
-        if (data.charAt(0) != beginEnclosure) {
-            return data;
-        }
-        StringBuilder sbuf = new StringBuilder();
-        sbuf.append(beginEnclosure);
-        for (int i = 1; i < data.length() - 1; i++) {
-            char c = data.charAt(i);
-            if (c == beginEnclosure) {
-                i++;
-            } else if (c == endEnclosure) {
-                i++;
+        if (sb.toString().length() != 0) {
+            String[] toRemoveAry = sb.toString().split(",");
+            for (int i = toRemoveAry.length - 1; i >= 0; i--) {
+                list.remove(Integer.parseInt(toRemoveAry[i]));
             }
-            sbuf.append(c);
+            pAryLine = list.toArray(new String[1]);
+//            for (int i = 0; i < pAryLine.length; i++) {
+//                System.out.println("00000000\t" + pAryLine[i]);
+//            }
         }
-        sbuf.append(endEnclosure);
-        return sbuf.toString();
+        return pAryLine;
     }
 
     public void close() throws Exception {
@@ -158,8 +163,8 @@ public class CSVFileParser {
     }
 
     public static void main(String[] args) {
-        File file = new File("csv-sample-file.csv");
-        CSVFileParser readFileUtil = new CSVFileParser(file, ",", "\"", "utf-8", false, false);
+        File file = new File("E:\\test\\test1.txt");
+        CSVFileParser readFileUtil = new CSVFileParser(file, ",", null, "utf-8", false, false);
         String[] aryLine = null;
         try {
             while ((aryLine = readFileUtil.getNext()) != null) {
