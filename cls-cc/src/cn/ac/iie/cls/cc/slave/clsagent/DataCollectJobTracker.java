@@ -65,30 +65,41 @@ public class DataCollectJobTracker implements Runnable {
     }
 
     public void removeJob(DataCollectJob pDataCollectJob) {
-        executingDataCollectJobSetLock.lock();
-        executingDataCollectJobSet.remove(pDataCollectJob.getProcessJobInstanceID());
-        executingDataCollectJobSetLock.unlock();
+        try {
+            executingDataCollectJobSetLock.lock();
+            executingDataCollectJobSet.remove(pDataCollectJob.getProcessJobInstanceID());
+        } finally {
+            executingDataCollectJobSetLock.unlock();
+        }
     }
 
     public void appendTask(String pDataProcessInstanceId, List<DataCollectTask> pDataCollectTaskList) {
-        executingDataCollectJobSetLock.lock();
-        DataCollectJob dataCollectJob = executingDataCollectJobSet.get(pDataProcessInstanceId);
-        executingDataCollectJobSetLock.unlock();
+        DataCollectJob dataCollectJob = null;
+        try {
+            executingDataCollectJobSetLock.lock();
+            executingDataCollectJobSet.get(pDataProcessInstanceId);
+        } finally {
+            executingDataCollectJobSetLock.unlock();
+        }
         if (dataCollectJob == null) {
             //fixme
-            logger.warn("can't find data process job with id " + pDataProcessInstanceId+",maybe cls-cc has creashed before");
+            logger.warn("can't find data process job with id " + pDataProcessInstanceId + ",maybe cls-cc has creashed before");
         } else {
             dataCollectJob.appendTask(pDataCollectTaskList);
         }
     }
 
     public void responseTask(String pDataProcessInstanceId, List<DataCollectTask> pDataCollectTaskList) {
-        executingDataCollectJobSetLock.lock();
-        DataCollectJob dataCollectJob = executingDataCollectJobSet.get(pDataProcessInstanceId);
-        executingDataCollectJobSetLock.unlock();
+        DataCollectJob dataCollectJob = null;
+        try {
+            executingDataCollectJobSetLock.lock();
+            executingDataCollectJobSet.get(pDataProcessInstanceId);
+        } finally {
+            executingDataCollectJobSetLock.unlock();
+        }
         if (dataCollectJob == null) {
             //fixme
-            logger.warn("can't find data process job with id " + pDataProcessInstanceId+",maybe cls-cc has creashed before");
+            logger.warn("can't find data process job with id " + pDataProcessInstanceId + ",maybe cls-cc has creashed before");
         } else {
             dataCollectJob.responseTask(pDataCollectTaskList);
         }
@@ -169,11 +180,14 @@ public class DataCollectJobTracker implements Runnable {
                     logger.warn("dispatch data collect job for data process job " + dataCollectJob.getProcessJobInstanceID() + " unsuccessfully for " + ex.getMessage(), ex);
                 } finally {
                     //end
-                    if (succeeded) {
-                        executingDataCollectJobSet.put(dataCollectJob.getProcessJobInstanceID(), dataCollectJob);
+                    try {
+                        if (succeeded) {
+                            executingDataCollectJobSet.put(dataCollectJob.getProcessJobInstanceID(), dataCollectJob);
+                        } else {
+                            dataCollectJobWaitingList.put(dataCollectJob);
+                        }
+                    } finally {
                         executingDataCollectJobSetLock.unlock();
-                    } else {
-                        dataCollectJobWaitingList.put(dataCollectJob);
                     }
                 }
             } catch (Exception ex) {

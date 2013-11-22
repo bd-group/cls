@@ -53,36 +53,51 @@ public class ETLJobTracker implements Runnable {
     }
 
     public void removeJob(ETLJob pETLJob) {
-        etlJobSetLock.lock();
-        etlJobSet.remove(pETLJob.getProcessJobInstanceID());
-        etlJobSetLock.unlock();
+        try {
+            etlJobSetLock.lock();
+            etlJobSet.remove(pETLJob.getProcessJobInstanceID());
+        } finally {
+            etlJobSetLock.unlock();
+        }
     }
 
-    public ETLJob getJob(String pProcessJobInstanceID) {
-        etlJobSetLock.lock();
-        ETLJob etlJob = etlJobSet.get(pProcessJobInstanceID);
-        etlJobSetLock.unlock();
+    public ETLJob getJob(String pDataProcessInstanceId) {
+        ETLJob etlJob = null;
+        try {
+            etlJobSetLock.lock();
+            etlJob = etlJobSet.get(pDataProcessInstanceId);
+        } finally {
+            etlJobSetLock.unlock();
+        }
         return etlJob;
     }
 
     public void appendTask(String pDataProcessInstanceId, List<ETLTask> pETLTaskList) {
-        etlJobSetLock.lock();
-        ETLJob etlJob = etlJobSet.get(pDataProcessInstanceId);
-        etlJobSetLock.unlock();
+        ETLJob etlJob = null;
+        try {
+            etlJobSetLock.lock();
+            etlJob = etlJobSet.get(pDataProcessInstanceId);
+        } finally {
+            etlJobSetLock.unlock();
+        }
+        if (etlJob == null) {
+            logger.warn("can't find job with id:" + pDataProcessInstanceId);
+            return;
+        }
         etlJob.appendTask(pETLTaskList);
 
     }
 
     public void responseTask(String pDataProcessInstanceId, List<ETLTask> pETLTaskList) {
-        etlJobSetLock.lock();
-        ETLJob etlJob = etlJobSet.get(pDataProcessInstanceId);
-        etlJobSetLock.unlock();
+        ETLJob etlJob = null;
+        try {
+            etlJobSetLock.lock();
+            etlJob = etlJobSet.get(pDataProcessInstanceId);
+        } finally {
+            etlJobSetLock.unlock();
+        }
         if (etlJob == null) {
             logger.warn("can't find job with id:" + pDataProcessInstanceId);
-//            System.out.println("it's likely that these tasks have been done for more than one time :");
-//            for (ETLTask task : pETLTaskList) {
-//                System.out.println("\tfilePath:" + task.filePath + " _;_ etl:" + task.etlIpPort);
-//            }
             return;
         }
         etlJob.responseTask(pETLTaskList);
