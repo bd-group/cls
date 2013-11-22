@@ -138,7 +138,7 @@ public class NoSqlClusterDicTableSyncHandler implements SlaveHandler {
                 String inputFilePath = etlJob.getInputFilePathStr();
                 System.out.println("#####inputFilePath:" + inputFilePath);
                 List<ETLTask> etlTaskList = new ArrayList<ETLTask>();
-                etlTaskList.add(new ETLTask(inputFilePath, ETLTask.EXECUTING));
+                etlTaskList.add(new ETLTask(inputFilePath, ETLTask.ETLTaskStatus.ENQUEUE));
                 etlJob.setTask2doNum(1);
                 etlJob.appendTask(etlTaskList);
             }

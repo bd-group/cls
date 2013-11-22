@@ -41,7 +41,7 @@ public class DataETLExecuteHandler implements SlaveHandler {
     public String execute(String pRequestContent) {
         String result = null;
         ResultSet rs = null;
-        ETLJob etlJob = ETLJob.getETLJob(pRequestContent);
+        ETLJob etlJob = ETLJob.getETLJob(pRequestContent,true);
 
         if (etlJob != null) {
             String clsAgentDataCollectDescriptor = etlJob.getDataProcessDescriptor().get(ETLJob.CLS_AGENT_DATA_COLLECT_DESC);
