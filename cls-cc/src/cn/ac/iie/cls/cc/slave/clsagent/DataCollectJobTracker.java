@@ -190,11 +190,14 @@ public class DataCollectJobTracker implements Runnable {
                     logger.warn("dispatch data collect job for data process job " + dataCollectJob.getProcessJobInstanceID() + " unsuccessfully for " + ex.getMessage(), ex);
                 } finally {
                     //end
-                    if (succeeded) {
-                        executingDataCollectJobSet.put(dataCollectJob.getProcessJobInstanceID(), dataCollectJob);
+                    try {
+                        if (succeeded) {
+                            executingDataCollectJobSet.put(dataCollectJob.getProcessJobInstanceID(), dataCollectJob);
+                        } else {
+                            dataCollectJobWaitingList.put(dataCollectJob);
+                        }
+                    } finally {
                         executingDataCollectJobSetLock.unlock();
-                    } else {
-                        dataCollectJobWaitingList.put(dataCollectJob);
                     }
                 }
             } catch (Exception ex) {
