@@ -19,26 +19,24 @@ import cn.ac.iie.cls.cc.slave.linkagecmd.QueryExecuteHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterDataBaseCreateHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterDataBaseDropHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterDataBaseTableListHandler;
-import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterDicTableSyncHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterSessionHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterStatusHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableColumnAlterHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableCreateHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableDropHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableInfoHandler;
-import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableOutputHandler;
 import cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableTruncateHandler;
 import cn.ac.iie.cls.cc.slave.raccluster.RacClusterSessionHandler;
 import cn.ac.iie.cls.cc.slave.raccluster.RacClusterStatusHandler;
 import cn.ac.iie.cls.cc.slave.test.CLSAgentDataCollectTestHandler;
 import cn.ac.iie.cls.cc.slave.test.ConfigExecuteTestHandler;
 import cn.ac.iie.cls.cc.slave.test.DataETLExecuteTestHandler;
-import cn.ac.iie.cls.cc.slave.test.DicTableExecuteTestHandler;
 import cn.ac.iie.cls.cc.slave.test.QueryExecuteTestHandler;
-import cn.ac.iie.cls.cc.slave.test.TableoutExecuteTestHandler;
 import cn.ac.iie.cls.cc.slave.welcome.WelcomeHandler;
+
 import java.util.HashMap;
 import java.util.Map;
+
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
@@ -59,7 +57,7 @@ public class SlaveHandlerFactory {
             //dataetl
             put("/welcome", WelcomeHandler.class);
             //dataetl
-            put("/dataetl/execute", DataETLExecuteHandler.class);
+            put("/dataetl/execute", DataETLExecuteTestHandler.class);
             put("/dataetl/checkstatus", DataETLCheckStatusHandler.class);
             put("/dataetl/etltaskreport", DataETLTaskReportHandler.class);
             //linkagecmd
@@ -87,8 +85,6 @@ public class SlaveHandlerFactory {
             put("/nosqlcluster/table/column/alter", NoSqlClusterTableColumnAlterHandler.class);
             put("/nosqlcluster/status", NoSqlClusterStatusHandler.class);
             put("/nosqlcluster/session", NoSqlClusterSessionHandler.class);
-            put("/nosqlcluster/table/tableoutput",NoSqlClusterTableOutputHandler.class);
-            put("/nosqlcluster/table/dictable",NoSqlClusterDicTableSyncHandler.class);
             //raccluster
             put("/raccluster/status", RacClusterStatusHandler.class);
             put("/raccluster/session", RacClusterSessionHandler.class);
@@ -97,8 +93,6 @@ public class SlaveHandlerFactory {
             put("/test/etljetest", DataETLExecuteTestHandler.class);
             put("/test/configjetest", ConfigExecuteTestHandler.class);
             put("/test/queryjetest", QueryExecuteTestHandler.class);
-            put("/test/tableoutput",TableoutExecuteTestHandler.class);
-            put("/test/dictable",DicTableExecuteTestHandler.class);
         }
     };
     private static Map<String, SlaveHandler> slaveObjectSet = new HashMap<String, SlaveHandler>();

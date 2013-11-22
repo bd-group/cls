@@ -6,7 +6,6 @@ package cn.ac.iie.cls.cc.slave.clsagent;
 
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
 import cn.ac.iie.cls.cc.slave.variablemanager.DateManager;
-import cn.ac.iie.cls.cc.util.HttpResponseParser;
 import cn.ac.iie.cls.cc.util.XMLReader;
 import cn.ac.iie.cls.cc.util.ZooKeeperOperator;
 
@@ -66,50 +65,30 @@ public class DataCollectJobTracker implements Runnable {
     }
 
     public void removeJob(DataCollectJob pDataCollectJob) {
-        try {
-            executingDataCollectJobSetLock.lock();
-            executingDataCollectJobSet.remove(pDataCollectJob.getProcessJobInstanceID());
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            executingDataCollectJobSetLock.unlock();
-        }
-
+        executingDataCollectJobSetLock.lock();
+        executingDataCollectJobSet.remove(pDataCollectJob.getProcessJobInstanceID());
+        executingDataCollectJobSetLock.unlock();
     }
 
     public void appendTask(String pDataProcessInstanceId, List<DataCollectTask> pDataCollectTaskList) {
-        DataCollectJob dataCollectJob = null;
-        try {
-            executingDataCollectJobSetLock.lock();
-            dataCollectJob = executingDataCollectJobSet.get(pDataProcessInstanceId);
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            executingDataCollectJobSetLock.unlock();
-        }
-
+        executingDataCollectJobSetLock.lock();
+        DataCollectJob dataCollectJob = executingDataCollectJobSet.get(pDataProcessInstanceId);
+        executingDataCollectJobSetLock.unlock();
         if (dataCollectJob == null) {
             //fixme
-            logger.warn("can't find data process job with id " + pDataProcessInstanceId + ",maybe cls-cc has creashed before");
+            logger.warn("can't find data process job with id " + pDataProcessInstanceId+",maybe cls-cc has creashed before");
         } else {
             dataCollectJob.appendTask(pDataCollectTaskList);
         }
     }
 
     public void responseTask(String pDataProcessInstanceId, List<DataCollectTask> pDataCollectTaskList) {
-        DataCollectJob dataCollectJob = null;
-        try {
-            executingDataCollectJobSetLock.lock();
-            dataCollectJob = executingDataCollectJobSet.get(pDataProcessInstanceId);
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            executingDataCollectJobSetLock.unlock();
-        }
-
+        executingDataCollectJobSetLock.lock();
+        DataCollectJob dataCollectJob = executingDataCollectJobSet.get(pDataProcessInstanceId);
+        executingDataCollectJobSetLock.unlock();
         if (dataCollectJob == null) {
             //fixme
-            logger.warn("can't find data process job with id " + pDataProcessInstanceId + ",maybe cls-cc has creashed before");
+            logger.warn("can't find data process job with id " + pDataProcessInstanceId+",maybe cls-cc has creashed before");
         } else {
             dataCollectJob.responseTask(pDataCollectTaskList);
         }

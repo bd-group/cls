@@ -33,7 +33,7 @@ public class CLSAgentReportHandler implements SlaveHandler {
 
         //file which has been upload
         if (xml.startsWith("database")) {
-            logger.info("database: " + xml);
+            System.out.println("database: " + xml);
             String[] splitXml = xml.split("[|]");
             String processInstanceID = "";
             processInstanceID = splitXml[3];
@@ -46,17 +46,12 @@ public class CLSAgentReportHandler implements SlaveHandler {
                     if (i > 5) {
                         String type = splitXml[2];
                         if (type.equals("GetherDataFromThrid")) {
-                            logger.info("#######total: " + splitXml[i]);
+                            System.out.println("#######total: " + splitXml[i]);
                         } else {
                             DataCollectTask dct = new DataCollectTask(splitXml[i]);
                             dct.taskStatus = DataCollectTask.EXECUTING;
-                            if(!splitXml[i].equals("is not a dir")){
-                                dctList.add(dct);
-                            }else{
-                                logger.warn("this is not a dir,please check path or date.");
-                            }
-                            //dctList.add(dct);
-                            logger.info("#######total: " + dct.fileName);
+                            dctList.add(dct);
+                            System.out.println("#######total: " + dct.fileName);
                             DataCollectJobTracker.getDataCollectJobTracker().appendTask(processInstanceID, dctList);
                             doTask = true;
                         }
@@ -70,12 +65,12 @@ public class CLSAgentReportHandler implements SlaveHandler {
                     if (i > 5) {
                         String type = splitXml[2];
                         if (type.equals("GetherDataFromThrid")) {
-                            logger.info("#######one: " + splitXml[i]);
+                            System.out.println("#######one: " + splitXml[i]);
                         } else {
                             DataCollectTask dct = new DataCollectTask(splitXml[i]);
                             dct.taskStatus = DataCollectTask.SUCCEEDED;
                             dctList.add(dct);
-                            logger.info("#######one: " + dct.fileName);
+                            System.out.println("#######one: " + dct.fileName);
                             DataCollectJobTracker.getDataCollectJobTracker().responseTask(processInstanceID, dctList);
                         }
                     }
@@ -86,12 +81,12 @@ public class CLSAgentReportHandler implements SlaveHandler {
                     if (i > 5) {
                         String type = splitXml[2];
                         if (type.equals("GetherDataFromThrid")) {
-                            logger.info("#######err: " + splitXml[i]);
+                            System.out.println("#######err: " + splitXml[i]);
                         } else {
                             DataCollectTask dct = new DataCollectTask(splitXml[i]);
                             dct.taskStatus = DataCollectTask.FAILED;
                             dctList.add(dct);
-                            logger.info("#######err: " + dct.fileName);
+                            System.out.println("#######err: " + dct.fileName);
                             DataCollectJobTracker.getDataCollectJobTracker().responseTask(processInstanceID, dctList);
                         }
                     }
@@ -101,15 +96,10 @@ public class CLSAgentReportHandler implements SlaveHandler {
                 ;
             }
         } else if (xml.startsWith("status")) {
-            if(xml.contains("return now")){
-                List<DataCollectTask> dctList = new ArrayList<DataCollectTask>();
-                String tmpprocessInstanceID = (xml.split("[|]"))[3];
-                DataCollectJobTracker.getDataCollectJobTracker().appendTask(tmpprocessInstanceID, dctList);
-            }
             if (xml.contains("heartbeat")) {
-                logger.info("heartbeat log : " + (xml.split("[|]"))[1]);
+                System.out.println("heartbeat log : " + (xml.split("[|]"))[1]);
             } else {
-                logger.info("status log : " + (xml.split("[|]"))[1]);
+                System.out.println("status log : " + (xml.split("[|]"))[1]);
             }
         }
         return "success!" + xml;

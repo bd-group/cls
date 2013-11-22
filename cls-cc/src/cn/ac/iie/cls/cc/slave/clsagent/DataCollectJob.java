@@ -98,12 +98,12 @@ public class DataCollectJob {
             switch (dataCollectTask.taskStatus) {
                 case DataCollectTask.SUCCEEDED:
                     succeededDataCollectTaskSet.put(dataCollectTask.fileName, dataCollectTask);
-                    etlTask2DoList.add(new ETLTask(dataCollectTask.fileName, ETLTask.EXECUTING));
+                    etlTask2DoList.add(new ETLTask(dataCollectTask.fileName, ETLTask.ETLTaskStatus.EXECUTING));
                     dataCollectTaskSet.remove(dataCollectTask.fileName);
                     break;
                 case DataCollectTask.FAILED:
                     failedDataCollectTaskSet.put(dataCollectTask.fileName, dataCollectTask);
-                    etlTaskFailedList.add(new ETLTask(dataCollectTask.fileName, ETLTask.FAILED));
+                    etlTaskFailedList.add(new ETLTask(dataCollectTask.fileName, ETLTask.ETLTaskStatus.FAILED));
                     dataCollectTaskSet.remove(dataCollectTask.fileName);                    
                     break;
                 default:

@@ -5,7 +5,6 @@
 package cn.ac.iie.cls.cc.slave.nosqlcluster;
 
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
-import cn.ac.iie.cls.cc.config.Configuration;
 import cn.ac.iie.cls.cc.slave.SlaveHandler;
 import java.io.BufferedReader;
 import java.io.File;
@@ -71,7 +70,7 @@ public class NoSqlClusterTableCreateHandler implements SlaveHandler {
             int index = 0;
             for (Element columnNameElt : columnNameElts) {
                 //获取name对象的内容
-                columnNames[index] = columnNameElt.element("name").getStringValue().toLowerCase();
+                columnNames[index] = columnNameElt.element("name").getStringValue();
                 //获取type对象的内容,并将其进行类型转换
                 columnTypes[index] = this.getColumnType(columnNameElt.element("type").getStringValue());
                 index++;
@@ -97,22 +96,13 @@ public class NoSqlClusterTableCreateHandler implements SlaveHandler {
                 stmt.executeQuery(sql);
 
                 sql = "CREATE TABLE IF NOT EXISTS " + tableName + "(";
-                String bzDDPartitionKey = "";
                 for (int i = 0; i < index; i++) {
-                    if (columnNames[i].endsWith("dd") && columnTypes[i].equals("INT")) {
-                        bzDDPartitionKey = columnNames[i];
-                        continue;
-                    }
-                    if (sql.endsWith("(")) {
-                        sql += columnNames[i] + " " + columnTypes[i];
+                    if (i < index - 1) {
+                        sql += columnNames[i] + " " + columnTypes[i] + ",";
                     } else {
-                        sql += "," + columnNames[i] + " " + columnTypes[i];
+                        sql += columnNames[i] + " " + columnTypes[i] + ")" + "comment " + "'" + comment + "'";
                     }
                 }
-
-                sql += ",cls_input_time timestamp";
-                sql += ") COMMENT " + "'" + comment + "'";
-                sql += " PARTITIONED BY (" + (bzDDPartitionKey.isEmpty() ? "" : bzDDPartitionKey + " INT,") + "cls_input_time_dd INT)";
                 logger.info(sql);
                 stmt.executeQuery(sql);
 
@@ -159,22 +149,7 @@ public class NoSqlClusterTableCreateHandler implements SlaveHandler {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        String configurationFileName = "cls-cc.properties";
-        logger.info("initializing cls cc server...");
-        logger.info("getting configuration from configuration file " + configurationFileName);
-        Configuration conf = Configuration.getConfiguration(configurationFileName);
-        if (conf == null) {
-            throw new Exception("reading " + configurationFileName + " is failed.");
-        }
-
-        logger.info("initializng runtime enviroment...");
-        try {
-            RuntimeEnv.initialize(conf);
-        } catch (Exception ex) {
-            throw new Exception("initializng runtime enviroment is failed for" + ex.getMessage());
-        }
-        logger.info("initialize runtime enviroment successfully");
+    public static void main(String[] args) {
         File inputXml = new File("create-table-specific.xml");
         try {
             String xmlStr = "";

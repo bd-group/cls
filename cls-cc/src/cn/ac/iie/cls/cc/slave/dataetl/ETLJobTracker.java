@@ -53,59 +53,36 @@ public class ETLJobTracker implements Runnable {
     }
 
     public void removeJob(ETLJob pETLJob) {
-        try {
-            etlJobSetLock.lock();
-            etlJobSet.remove(pETLJob.getProcessJobInstanceID());
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            etlJobSetLock.unlock();
-        }
+        etlJobSetLock.lock();
+        etlJobSet.remove(pETLJob.getProcessJobInstanceID());
+        etlJobSetLock.unlock();
     }
 
     public ETLJob getJob(String pProcessJobInstanceID) {
-        ETLJob etlJob = null;
-        try {
-            etlJobSetLock.lock();
-            etlJob = etlJobSet.get(pProcessJobInstanceID);
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            etlJobSetLock.unlock();
-        }
+        etlJobSetLock.lock();
+        ETLJob etlJob = etlJobSet.get(pProcessJobInstanceID);
+        etlJobSetLock.unlock();
         return etlJob;
     }
 
     public void appendTask(String pDataProcessInstanceId, List<ETLTask> pETLTaskList) {
-        ETLJob etlJob = null;
-        try {
-            etlJobSetLock.lock();
-            etlJob = etlJobSet.get(pDataProcessInstanceId);
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            etlJobSetLock.unlock();
-        }
-
-        if (etlJob == null) {
-            logger.warn("can't find job with id:" + pDataProcessInstanceId);
-            return;
-        }
+        etlJobSetLock.lock();
+        ETLJob etlJob = etlJobSet.get(pDataProcessInstanceId);
+        etlJobSetLock.unlock();
         etlJob.appendTask(pETLTaskList);
+
     }
 
     public void responseTask(String pDataProcessInstanceId, List<ETLTask> pETLTaskList) {
-        ETLJob etlJob = null;
-        try {
-            etlJobSetLock.lock();
-            etlJob = etlJobSet.get(pDataProcessInstanceId);
-        } catch (Exception ex) {
-            logger.warn("error happened " + ex.getMessage(), ex);
-        } finally {
-            etlJobSetLock.unlock();
-        }
+        etlJobSetLock.lock();
+        ETLJob etlJob = etlJobSet.get(pDataProcessInstanceId);
+        etlJobSetLock.unlock();
         if (etlJob == null) {
             logger.warn("can't find job with id:" + pDataProcessInstanceId);
+//            System.out.println("it's likely that these tasks have been done for more than one time :");
+//            for (ETLTask task : pETLTaskList) {
+//                System.out.println("\tfilePath:" + task.filePath + " _;_ etl:" + task.etlIpPort);
+//            }
             return;
         }
         etlJob.responseTask(pETLTaskList);
@@ -120,12 +97,9 @@ public class ETLJobTracker implements Runnable {
                 etlJob = etlJobWaitingList.take();
                 Thread etlJobRunner = new Thread(etlJob);
                 etlJobRunner.start();
-                try {
-                    etlJobSetLock.lock();
-                    etlJobSet.put(etlJob.getProcessJobInstanceID(), etlJob);
-                } finally {
-                    etlJobSetLock.unlock();
-                }
+                etlJobSetLock.lock();
+                etlJobSet.put(etlJob.getProcessJobInstanceID(), etlJob);
+                etlJobSetLock.unlock();
             } catch (Exception ex) {
                 ex.printStackTrace();
             }
@@ -133,11 +107,16 @@ public class ETLJobTracker implements Runnable {
     }
 
     public boolean rewaitByEtlIpPort(String EtlIpPort) {
-        if (etlJobSet.isEmpty()) {
-            return false;
-        }
-        for (Map.Entry<String, ETLJob> entry : etlJobSet.entrySet()) {
-            entry.getValue().rewaitByEtlIpPort(EtlIpPort);
+        etlJobSetLock.lock();
+        try {
+            if (etlJobSet.isEmpty()) {
+                return false;
+            }
+            for (Map.Entry<String, ETLJob> entry : etlJobSet.entrySet()) {
+                entry.getValue().rewaitByEtlIpPort(EtlIpPort);
+            }
+        } finally {
+            etlJobSetLock.unlock();
         }
         return true;
     }
@@ -152,12 +131,12 @@ public class ETLJobTracker implements Runnable {
         return rslt;
     }
 
-    public boolean rewaitByJobTask(String JobId, String filePath) {
+    public boolean rewaitByJobTask(String JobId, String taskId, boolean failed) {
         if (null == getJob(JobId)) {
             System.out.println("can't find job with id:" + JobId);
             return false;
         } else {
-            return getJob(JobId).rewaitByFilePath(filePath);
+            return getJob(JobId).rewaitByTaskId(taskId, failed);
         }
     }
 }

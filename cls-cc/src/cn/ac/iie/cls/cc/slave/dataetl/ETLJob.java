@@ -4,15 +4,21 @@
  */
 package cn.ac.iie.cls.cc.slave.dataetl;
 
+import cn.ac.ict.ncic.util.dao.Dao;
+import cn.ac.ict.ncic.util.dao.DaoPool;
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
 import cn.ac.iie.cls.cc.monitor.EtlWatcher;
+import static cn.ac.iie.cls.cc.slave.dataetl.DataETLTaskReportHandler.logger;
 import cn.ac.iie.cls.cc.slave.dataetl.schedule.ScheduleFactory;
 import cn.ac.iie.cls.cc.slave.dataetl.schedule.StreamScheduleInterface;
 import cn.ac.iie.cls.cc.slave.dataetl.schedule.TaskItem;
 import cn.ac.iie.cls.cc.util.HttpResponseParser;
 import cn.ac.iie.cls.cc.util.XMLReader;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
@@ -27,6 +33,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
 import org.apache.http.client.HttpClient;
@@ -51,26 +58,28 @@ public class ETLJob implements Runnable {
     private Date dispatchedTime = null;
     private Date runStartTime = null;
     private Date runEndTime = null;
-    private boolean needReport = true;
 
     public enum JobStatus {
 
-        QUEUING, RUNNING, SUCCEED, TERMINATED, ERROR
+        QUEUING, RUNNING, SUCCEED, HALFSUCCEED, TERMINATED, ERROR
     }
     private JobStatus jobStatus;
     private Map<String, String> dataProcessDescriptor = new HashMap<String, String>();
     public static final String CLS_AGENT_DATA_COLLECT_DESC = "clsAgentETLDesc";
     public static final String DATA_ETL_DESC = "dataEtlDesc";
-    private static final String PROCESS_JOB_DESC = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?><requestParams><processJobInstanceId>PROCESS_JOB_ID</processJobInstanceId><processConfig>PROCESS_CONFIG</processConfig></requestParams>";
+    private static final String PROCESS_JOB_DESC = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?><requestParams><processJobInstanceId>PROCESS_JOB_ID</processJobInstanceId><taskId>TASK_ID</taskId><redoTimes>REDO_TIMES</redoTimes><processConfig>PROCESS_CONFIG</processConfig></requestParams>";
     private int task2doNum;
     private BlockingQueue<ETLTask> etlTaskWaitingList = new LinkedBlockingQueue<ETLTask>();
-    private Map<String, ETLTask> etlTaskRuningSet = new HashMap<String, ETLTask>();
+    private Map<String, ETLTask> etlTaskSet = new HashMap<String, ETLTask>();
     private Lock etlTaskSetLock = new ReentrantLock();
     private Map<String, ETLTask> succeededETLTaskSet = new HashMap<String, ETLTask>();
     private Map<String, ETLTask> failedETLTaskSet = new HashMap<String, ETLTask>();
     private Map<String, Map> operatorStatSet = new HashMap<String, Map>();
     private Map<String, Set> operatorRelationSet = new HashMap<String, Set>();
+    private final Map<String, Integer> taskDispatchTimes = new HashMap<String, Integer>();
+    private final Map<String, Integer> taskFailedTimes = new HashMap<String, Integer>();
     private volatile boolean stop = false;
+    private boolean jobSucceed = true;
     static Logger logger = null;
 
     static {
@@ -78,18 +87,25 @@ public class ETLJob implements Runnable {
         logger = Logger.getLogger(ETLJob.class.getName());
     }
 
-    private ETLJob(boolean pNeedReport) {
-        this();
-        needReport = pNeedReport;
-    }
-
     private ETLJob() {
         dispatchedTime = new Date();
     }
 
-    public static ETLJob getETLJob(String pProcessJobDescriptor, boolean pNeedReport) {
+    public static ETLJob getETLJob() {
+        return new ETLJob();
+    }
+
+    public void setProcessJobInstanceID(String processJobInstanceID) {
+        this.processJobInstanceID = processJobInstanceID;
+    }
+
+    public void setETLJobDescriptor(String pDescriptor) {
+        dataProcessDescriptor.put(DATA_ETL_DESC, pDescriptor);
+    }
+
+    public static ETLJob getETLJob(String pProcessJobDescriptor) {
         logger.debug(pProcessJobDescriptor);
-        ETLJob dataProcessJob = new ETLJob(pNeedReport);
+        ETLJob dataProcessJob = new ETLJob();
         try {
             Document processJobDoc = DocumentHelper.parseText(pProcessJobDescriptor);
             Element processJobInstanceElt = processJobDoc.getRootElement();
@@ -216,11 +232,32 @@ public class ETLJob implements Runnable {
     }
 
     public synchronized void appendTask(List<ETLTask> pETLTaskList) {
-        for (ETLTask etlTask : pETLTaskList) {
-            try {
+        Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+        String date = sdf.format(new Date());
+        String sql = "update dp_job set task_num = " + pETLTaskList.size() + ", update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') where job_id = '" + processJobInstanceID + "'";
+        logger.info(sql);
+        try {
+            dao.executeUpdate(sql);
+            for (ETLTask etlTask : pETLTaskList) {
                 etlTaskWaitingList.put(etlTask);
-            } catch (Exception ex) {
+                sql = "insert into dp_task values ('" + etlTask.taskId + "', '" + processJobInstanceID + "', '" + etlTask.filePath + "','" + ETLTask.ETLTaskStatus.ENQUEUE + "','" + etlTask.etlIpPort + "',''," + etlTask.dispatchTimes + ", "+ etlTask.failedTimes + ", to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS'))";
+                logger.info(sql);
+                dao.executeUpdate(sql);
+                taskDispatchTimes.put(etlTask.taskId, 0);
+                taskFailedTimes.put(etlTask.taskId, 0);
+                logger.info("task for etl job " + processJobInstanceID + " of " + etlTask.filePath + " has inserted into dp_task successfully");
             }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        Connection tmpConn = null;
+        try {
+            tmpConn = dao.getConnection();
+            tmpConn.close();
+        } catch (Exception ex) {
+            logger.warn("errors exists in closing sql connection", ex);
         }
     }
 
@@ -301,11 +338,9 @@ public class ETLJob implements Runnable {
     }
 
     private void reportJobStat() {
-        if (!needReport) {
-            return;
-        }
-        String stat = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?><requestParams><priority>PRIORITY</priority><dispatchedTime>DISPATCHED_TIME</dispatchedTime><runStartTime>RUN_START_TIME</runStartTime><runEndTime>RUN_END_TIME</runEndTime><state>STATE</state><errorMessage></errorMessage>#STAT</requestParams>";
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        /*String topOperator = (String) (operatorRelationSet.get("null").iterator().next());
+        String stat = getOperatorStat(topOperator, "");
+        stat = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?><requestParams><priority>PRIORITY</priority><dispatchedTime>DISPATCHED_TIME</dispatchedTime><runStartTime>RUN_START_TIME</runStartTime><runEndTime>RUN_END_TIME</runEndTime><state>STATE</state><errorMessage></errorMessage>" + stat + "</requestParams>";
         stat = stat.replace("PRIORITY", "PROCESS_PRIORITY_NORMAL");
         stat = stat.replace("DISPATCHED_TIME", sdf.format(dispatchedTime));
         stat = stat.replace("RUN_START_TIME", sdf.format(runStartTime));
@@ -323,18 +358,11 @@ public class ETLJob implements Runnable {
             default:
                 stat = stat.replace("STATE", "UNKNOWN");
         }
-
-        Set topOperatorSet = operatorRelationSet.get("null");
-        if (topOperatorSet == null) {
-            stat = stat.replace("#STAT", "");
-        } else {
-            String topOperator = (String) (operatorRelationSet.get("null").iterator().next());
-            stat = stat.replace("#STAT", getOperatorStat(topOperator, ""));
-        }
-
         logger.info(stat);
+        System.out.println(stat);*/
+        updateJobStatusInDB();
 
-        try {
+        /*try {
             HttpClient httpClient = new DefaultHttpClient();
             logger.info(RuntimeEnv.getParam(RuntimeEnv.SYSTEM_CC_ROOT_URI) + "/CoLinkage/resources/processJobInstance/" + processJobInstanceID + "/result");
             HttpPost httppost = new HttpPost(RuntimeEnv.getParam(RuntimeEnv.SYSTEM_CC_ROOT_URI) + "/CoLinkage/resources/processJobInstance/" + processJobInstanceID + "/result");
@@ -351,44 +379,169 @@ public class ETLJob implements Runnable {
             httppost.releaseConnection();
         } catch (Exception ex) {
             ex.printStackTrace();
+        }*/
+    }
+    
+    public void updateJobStatusInDB() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+        String sql = "";
+        String date = sdf.format(new Date());
+        sql = "update dp_job set job_status = '" + jobStatus + "', update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') where job_id = '" + this.processJobInstanceID + "'";
+        logger.info(sql);
+        try {
+            dao.executeUpdate(sql);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+        Connection tmpConn = null;
+        try {
+            tmpConn = dao.getConnection();
+            tmpConn.close();
+        } catch (Exception ex) {
+            logger.warn("errors exists in closing sql connection", ex);
         }
     }
 
     public void responseTask(List<ETLTask> pETLTaskList) {
         synchronized (this) {
             for (ETLTask etlTask : pETLTaskList) {
+                Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+                String sql = "";
                 switch (etlTask.taskStatus) {
-                    case ETLTask.SUCCEEDED:
+                    case SUCCEEDED:
                         logger.info("task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " finished successfully");
                         try {
-                            EtlWatcher.deleteTaskWatcher(etlTask.filePath);
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                            String date = sdf.format(new Date());
+                            synchronized (taskFailedTimes) {
+                                etlTask.failedTimes = taskFailedTimes.get(etlTask.taskId);
+                            }
+                            sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.SUCCEEDED + "',failed_times = " + etlTask.failedTimes + ", dataprocess_stat = '" + etlTask.taskStat + "', update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') "
+                                    + "where job_id = '" + this.processJobInstanceID + "' and task_id = '" + etlTask.taskId + "' "
+                                    + "and dispatch_times = " + etlTask.dispatchTimes + " and task_status = '" + ETLTask.ETLTaskStatus.PRECOMMIT + "'";
+                           logger.info(sql);
+                            //+ " and task_status <> " + ETLTask.ABORT + " and task_status <> " + ETLTask.CRASHED + " and task_status <> " + ETLTask.FAILED ;
+                            System.out.println("job execute successful : time = " + date + " job_id = " + this.processJobInstanceID + "serverid = " + etlTask.etlIpPort);
+                            dao.executeUpdate(sql);
+                            EtlWatcher.deleteTaskWatcher(etlTask.taskId + "_" + etlTask.dispatchTimes);
+                            
+//                            sql = "insert into dp_task values ('" + etlTask.taskId + "', '" + processJobInstanceID + "', '" + etlTask.filePath + "','" + ETLTask.ETLTaskStatus.SUCCEEDED + "','" + etlTask.etlIpPort + "',''," + etlTask.redoTimes + ", to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS'))";
+//                            logger.info(sql);
+//                            dao.executeUpdate(sql);
+                            
+                            if (taskDispatchTimes.get(etlTask.taskId) > 1) {
+                            	sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.ABORT + "' where job_id = '" + processJobInstanceID + "' and task_id = '" + etlTask.taskId + "' and dispatch_times <> " + etlTask.dispatchTimes;
+                                logger.info(sql);
+                                dao.executeUpdate(sql);
+                            }
                         } catch (SchedulerException ex) {
                             java.util.logging.Logger.getLogger(ETLJob.class.getName()).log(Level.SEVERE, null, ex);
+                        } catch (Exception e) {
+                            logger.error("there are errors in executing sql: " + sql, e);
                         }
-                        succeededETLTaskSet.put(etlTask.filePath, etlTask);
+                        succeededETLTaskSet.put(etlTask.taskId, etlTask);
+                        taskDispatchTimes.remove(etlTask.taskId);
 
                         if (etlTask.taskStat == null || etlTask.taskStat.isEmpty()) {
                             logger.warn("it seems task task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " forgot to report statistic information");
                         } else {
                             updateJobStat(etlTask.taskStat);
                         }
-                        etlTaskRuningSet.remove(etlTask.filePath);
+                        etlTaskSet.remove(etlTask.taskId);
                         break;
-                    case ETLTask.FAILED:
+                    case HALFSUCCEED:
+                        logger.info("task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " finished halfsucceeded");
+                        try {
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                            String date = sdf.format(new Date());
+                            synchronized (taskFailedTimes) {
+                                etlTask.failedTimes = taskFailedTimes.get(etlTask.taskId);
+                            }
+                            sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.HALFSUCCEED + "',failed_times = " + etlTask.failedTimes + ", dataprocess_stat = '" + etlTask.taskStat + "', update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') "
+                                    + "where job_id = '" + this.processJobInstanceID + "' and task_id = '" + etlTask.taskId + "' "
+                                    + "and dispatch_times = " + etlTask.dispatchTimes + " and task_status = '" + ETLTask.ETLTaskStatus.PRECOMMIT + "'";
+                            logger.info(sql);
+                            System.out.println("job execute successful : time = " + date + " job_id = " + this.processJobInstanceID + "serverid = " + etlTask.etlIpPort);
+                            dao.executeUpdate(sql);
+                            EtlWatcher.deleteTaskWatcher(etlTask.taskId + "_" + etlTask.dispatchTimes);
+
+                            if (taskDispatchTimes.get(etlTask.taskId) > 1) {
+                            	sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.ABORT + "' where job_id = '" + processJobInstanceID + "' and task_id = '" + etlTask.taskId + "' and dispatch_times <> " + etlTask.dispatchTimes;
+                                logger.info(sql);
+                                dao.executeUpdate(sql);
+                            }
+                        } catch (SchedulerException ex) {
+                            java.util.logging.Logger.getLogger(ETLJob.class.getName()).log(Level.SEVERE, null, ex);
+                        } catch (Exception e) {
+                            logger.error("there are errors in executing sql: " + sql, e);
+                        }
+                        succeededETLTaskSet.put(etlTask.taskId, etlTask);
+                        taskDispatchTimes.remove(etlTask.taskId);
+
+                        if (etlTask.taskStat == null || etlTask.taskStat.isEmpty()) {
+                            logger.warn("it seems task task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " forgot to report statistic information");
+                        } else {
+                            updateJobStat(etlTask.taskStat);
+                        }
+                        etlTaskSet.remove(etlTask.taskId);
+                        break;
+                    case FAILED:
                         logger.warn("task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " finished unsuccessfully");
                         try {
-                            EtlWatcher.deleteTaskWatcher(etlTask.filePath);
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                            String date = sdf.format(new Date());
+                            addFailedTime(etlTask.taskId);
+                            synchronized (taskFailedTimes) {
+                                etlTask.failedTimes = taskFailedTimes.get(etlTask.taskId);
+                            }
+                            sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.FAILED + "',failed_times = " + etlTask.failedTimes + " , dataprocess_stat = '" + etlTask.taskStat + "', update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') "
+                                    + "where job_id = '" + this.processJobInstanceID + "' and task_id = '" + etlTask.taskId + "' and dispatch_times = " + etlTask.dispatchTimes + " and (task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' or task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "')";
+                            logger.info(sql);
+                            logger.info("job execute failed : time = " + date + " job_id = " + this.processJobInstanceID + " task_file_path = " + etlTask.filePath + " task_id = " + etlTask.taskId);
+                            dao.executeUpdate(sql);
+                            EtlWatcher.deleteTaskWatcher(etlTask.taskId + "_" + etlTask.dispatchTimes);
+                            
+                            if (taskDispatchTimes.get(etlTask.taskId) < 3) {
+                                System.out.println("错误重发，1.0版本直接重发" + taskDispatchTimes.get(etlTask.taskId));
+                                logger.info("this task is failed and it will be redispatched : time = " + date + " job_id = " + this.processJobInstanceID + " task_file_path = " + etlTask.filePath + " task_id = " + etlTask.taskId);
+                                ETLJobTracker.getETLJobTracker().rewaitByJobTask(processJobInstanceID, etlTask.taskId, true);
+                            } else {
+                                logger.info("this task failed and it has been redispathced for more then 2 times maybe it's an error task : time = " + date + " job_id = " + this.processJobInstanceID + " task_file_path = " + etlTask.filePath + " task_id = " + etlTask.taskId);
+                                
+//                                sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.FAILED + "', dataprocess_stat = '" + etlTask.taskStat + "', update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') where job_id = '" + this.processJobInstanceID + "' "
+//                                        + "and task_id = '" + etlTask.taskId + "' and dispatch_times = " + etlTask.redoTimes + " and task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "'";
+//                                logger.info(sql);
+//                                dao.executeUpdate(sql);
+                                
+                                if (taskFailedTimes.containsKey(etlTask.taskId) && taskFailedTimes.get(etlTask.taskId)>=3) {
+                                    logger.info("task failed for 3 times, and it will be paused");
+                                    pauseTask(etlTask.taskId, false);
+                                }
+                                if (etlTask.taskStat == null || etlTask.taskStat.isEmpty()) {
+                                    logger.warn("it seems task task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " forgot to report statistic information");
+                                } else {
+                                    updateJobStat(etlTask.taskStat);
+                                }
+                            }
                         } catch (SchedulerException ex) {
                             logger.warn("delete task watcher of task of " + etlTask.filePath + " for dataprocess job " + processJobInstanceID + " is failed for " + ex.getMessage(), ex);
+                        } catch (Exception e) {
+                            logger.error("there are errors in executing sql: " + sql, e);
                         }
-                        failedETLTaskSet.put(etlTask.filePath, etlTask);
-//                        updateJobStat(etlTask.taskStat);
-                        etlTaskRuningSet.remove(etlTask.filePath);
+                        updateJobStat(etlTask.taskStat);
                         break;
-                    case ETLTask.EXECUTING:
+                    case EXECUTING:
                         break;
                     default:
                         logger.warn("unknown task status " + etlTask.taskStatus + " for etl task of " + etlTask.filePath);
+                }
+                try {
+                    Connection conn = dao.getConnection();
+                    conn.close();
+                } catch (Exception e) {
+                    logger.warn("there errors in closing db connection", e);
                 }
             }
         }
@@ -402,22 +555,48 @@ public class ETLJob implements Runnable {
     public void run() {
         runStartTime = new Date();
         jobStatus = JobStatus.RUNNING;
+        updateJobStatusInDB();
         while (true) {
             try {
                 ETLTask etlTask = etlTaskWaitingList.peek();
                 if (etlTask != null) {
                     boolean succeeded = false;
+                    String host = "";
+                    int port = 0;
+                    //ScheduleFactory scft = new ScheduleFactory();
                     StreamScheduleInterface schd = ScheduleFactory.getStreamScheduleHandler(ScheduleFactory.UpdateMode.Auto, ScheduleFactory.stdStreamAlgorithm.Greedy);
-                    TaskItem task = schd.Schedule();
-                    String host = "http://" + task.getEtlIp();
-                    int port = task.getEtlPort();
-                    etlTask.etlIpPort = task.getEtlIp() + ":" + task.getEtlPort();
+                    TaskItem taskServer = schd.Schedule();
+                    if (etlTask.dispatchTimes == 1) {
+                        host = "http://" + taskServer.getEtlIp();
+                        port = taskServer.getEtlPort();
+                        etlTask.etlIpPort = taskServer.getEtlIp() + ":" + taskServer.getEtlPort();
+                    } else {
+                        System.out.println("3---" + ScheduleFactory.getEtlList().size());
+                        if (ScheduleFactory.getEtlList() != null) {
+                            if (ScheduleFactory.getEtlList().size() > 1) {
+                                schd = ScheduleFactory.getStreamScheduleHandler(ScheduleFactory.UpdateMode.Auto, ScheduleFactory.stdStreamAlgorithm.Greedy);
+                                ScheduleFactory.removeETLItem(etlTask.etlIpPort);
+                                taskServer = schd.Schedule();
+                                host = "http://" + taskServer.getEtlIp();
+                                port = taskServer.getEtlPort();
+//                                if (!etlTask.etlIpPort.equals(taskServer.getEtlIp() + ":" + taskServer.getEtlPort())) {
+                                etlTask.etlIpPort = taskServer.getEtlIp() + ":" + taskServer.getEtlPort();
+//                                    break;
+//                                }
+                            } else {
+                                host = "http://" + taskServer.getEtlIp();
+                                port = taskServer.getEtlPort();
+                                etlTask.etlIpPort = taskServer.getEtlIp() + ":" + taskServer.getEtlPort();
+                            }
+                    	}
+                    }
 
-                    String content = dataProcessDescriptor.get(DATA_ETL_DESC).replace("#{FILE_PATH}", etlTask.filePath);
+                    String content = dataProcessDescriptor.get(DATA_ETL_DESC).replace("#{FILE_PATH}", etlTask.filePath).replace("TASK_ID", etlTask.taskId).replace("REDO_TIMES", etlTask.dispatchTimes + "");
                     try {
+                        System.out.println(host + ":" + port + "/resources/etltask/execute");
+                        System.out.println(content);
                         HttpClient httpClient = new DefaultHttpClient();
                         HttpPost httppost = new HttpPost(host + ":" + port + "/resources/etltask/execute");
-
                         InputStreamEntity reqEntity = new InputStreamEntity(new ByteArrayInputStream(content.getBytes()), -1);
                         reqEntity.setContentType("binary/octet-stream");
                         reqEntity.setChunked(true);
@@ -428,6 +607,7 @@ public class ETLJob implements Runnable {
                         StatusLine sl = response.getStatusLine();
                         if (sl.getStatusCode() == 200) {
                             String rs = HttpResponseParser.getResponseContent(response);
+                            System.out.println("response == = " + rs);
                             if (rs.trim().equals("ok")) {
                                 logger.info("dispacth task for etl job " + processJobInstanceID + " of " + etlTask.filePath + " to " + etlTask.etlIpPort + " successfully");
                                 succeeded = true;
@@ -437,49 +617,114 @@ public class ETLJob implements Runnable {
                         } else {
                             logger.warn("dispacth task for etl job " + processJobInstanceID + " of " + etlTask.filePath + " to " + etlTask.etlIpPort + " unsuccessfully");
                         }
-                        //fixme:dispose task dispatch error  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                      
+                        //fixme:dispose task dispatch error  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!                    
                         httppost.releaseConnection();
                     } catch (Exception ex) {
                         logger.warn("dispatch task for etl job " + processJobInstanceID + " of " + etlTask.filePath + " to " + etlTask.etlIpPort + " unsuccessfully for " + ex.getMessage(), ex);
                     } finally {
                         //end
+                        Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+                        String sql = "";
                         if (succeeded) {
-                            EtlWatcher.appendTaskWatcher(etlTask.filePath, processJobInstanceID);
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                            String date = sdf.format(new Date());
+                            sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "', etlserver_id = '" + etlTask.etlIpPort + "', update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') where job_id = '"
+                                    + this.processJobInstanceID + "' and task_id = '" + etlTask.taskId + "' and dispatch_times = " + etlTask.dispatchTimes + " and task_status = '" + ETLTask.ETLTaskStatus.ENQUEUE + "'";
+                            logger.info(sql);
+                            System.out.println("job despatched to etl dca_task : job_id = " + processJobInstanceID + " task_id = " + etlTask.taskId + " task_file_path = " + etlTask.filePath);
+                            dao.executeUpdate(sql);
+                            EtlWatcher.appendTaskWatcher(etlTask.taskId + "_" + etlTask.dispatchTimes, processJobInstanceID);
                             etlTaskWaitingList.take();
-                            etlTaskRuningSet.put(etlTask.filePath, etlTask);
+                            etlTaskSet.put(etlTask.taskId, etlTask);
+                            
+                            synchronized(taskDispatchTimes) {
+                                System.out.println("set redoTimes = " + taskDispatchTimes.get(etlTask.taskId) + " taskId = " + etlTask.taskId);
+                                taskDispatchTimes.put(etlTask.taskId, taskDispatchTimes.get(etlTask.taskId)+1);
+                                System.out.println("set redoTimes = " + taskDispatchTimes.get(etlTask.taskId) + " taskId = " + etlTask.taskId);
+                            }
                             logger.info("task for etl job " + processJobInstanceID + " of " + etlTask.filePath + " has removed from etlTaskWaitingList successfully");
+                        } else {
+                            logger.warn("dispatch task for etl job " + processJobInstanceID + " of " + etlTask.filePath + " to " + etlTask.etlIpPort + " unsuccessfully preparing to resend");
                         }
-                        logger.info("etl job for data process job " + processJobInstanceID + " etlTaskWaitingList size:" + etlTaskWaitingList.size());
+
+                        Connection tmpConn = null;
+                        try {
+                            tmpConn = dao.getConnection();
+                            tmpConn.close();
+                        } catch (Exception ex) {
+                            logger.warn("errors exists in closing sql connection", ex);
+                        }
                         etlTaskSetLock.unlock();
                     }
                 }
 
                 synchronized (this) {
-                    logger.info("etl job for data process job " + processJobInstanceID + " status--start at " + runStartTime + " td:" + task2doNum + ",tt:" + etlTaskRuningSet.size() + ",st:" + succeededETLTaskSet.size() + ",ft:" + failedETLTaskSet.size());
+                    logger.info("etl job for data process job " + processJobInstanceID + " status--start at " + runStartTime + " td:" + task2doNum + ",tt:" + etlTaskSet.size() + ",st:" + succeededETLTaskSet.size() + ",ft:" + failedETLTaskSet.size());
                     if (task2doNum == 0) {
                         runEndTime = new Date();
                         jobStatus = JobStatus.SUCCEED;
                         logger.info("etl job for data process job " + processJobInstanceID + " is finished with no task to do at " + runEndTime);
-                        reportJobStat();
                         break;
                     } else if (task2doNum > 0) {
                         int taskDoneNum = succeededETLTaskSet.size() + failedETLTaskSet.size();
 
                         if (taskDoneNum == task2doNum) {
                             runEndTime = new Date();
-                            if (succeededETLTaskSet.size() == 0) {
-                                jobStatus = JobStatus.ERROR;
-                                logger.error("etl job for data process job " + processJobInstanceID + " is finished unsuccessfully at " + runEndTime + " with " + failedETLTaskSet.size() + " failed task");
-                            } else if (failedETLTaskSet.size() == 0) {
+                            if (jobSucceed) {
                                 jobStatus = JobStatus.SUCCEED;
                                 logger.info("etl job for data process job " + processJobInstanceID + " is finished successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task");
                             } else {
-                                //fixme
-                                jobStatus = JobStatus.SUCCEED;
-                                logger.warn("etl job for data process job " + processJobInstanceID + " is finished partially successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task and " + failedETLTaskSet.size() + " failed task");
+                                if (succeededETLTaskSet.isEmpty()) {
+                                    jobStatus = JobStatus.HALFSUCCEED;
+                                    logger.error("etl job for data process job " + processJobInstanceID + " is finished partly succeed at " + runEndTime + " with " + failedETLTaskSet.size() + " failed task and " + succeededETLTaskSet.size() + " succeeded task");
+                                } else {
+                                    jobStatus = JobStatus.ERROR;
+                                    logger.info("etl job for data process job " + processJobInstanceID + " is finished successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task");
+                                }
                             }
+//                            if (succeededETLTaskSet.size() == 0) {
+//                                jobStatus = JobStatus.ERROR;
+//                                logger.error("etl job for data process job " + processJobInstanceID + " is finished unsuccessfully at " + runEndTime + " with " + failedETLTaskSet.size() + " failed task");
+//                            } else if (failedETLTaskSet.size() == 0) {
+//                                jobStatus = JobStatus.SUCCEED;
+//                                logger.info("etl job for data process job " + processJobInstanceID + " is finished successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task");
+//                            } else {
+//                                //fixme
+//                                jobStatus = JobStatus.ERROR;
+//                                logger.warn("etl job for data process job " + processJobInstanceID + " is finished partially successfully at " + runEndTime + " with " + succeededETLTaskSet.size() + " succeeded task and " + failedETLTaskSet.size() + " failed task");
+//                            }
                             reportJobStat();
                             ETLJobTracker.getETLJobTracker().removeJob(this);
+                            
+                            Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+                            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+                            String date = sdf.format(new Date());
+                            try {
+                                Set<String> taskIdSet = taskDispatchTimes.keySet();
+                                Iterator<String> taskIdIt = taskIdSet.iterator();
+                                while(taskIdIt.hasNext()) {
+                                    ETLTask abortTask = getETLTask(taskIdIt.next());
+                                    synchronized (taskFailedTimes) {
+                                        abortTask.failedTimes = taskFailedTimes.get(abortTask.taskId);
+                                    }
+                                    String sql = "insert into dp_task values ('" + abortTask.taskId + "', '" + processJobInstanceID + "', '" + abortTask.filePath + "','" + ETLTask.ETLTaskStatus.ABORT + "','" + abortTask.etlIpPort + "','" + abortTask.taskStat + "'," + abortTask.dispatchTimes + ", " + abortTask.failedTimes + ", to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS'))";
+                                    logger.info(sql);
+                                    dao.executeUpdate(sql);
+                                }
+                            } catch (SQLException e) {
+                                e.printStackTrace();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            } finally {
+                                Connection conn = null;
+                                try {
+                                    conn = dao.getConnection();
+                                    conn.close();
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            
                             break;
                         }
                     }
@@ -492,8 +737,6 @@ public class ETLJob implements Runnable {
             }
         }
 
-//        this.notifyAll();
-
     }
 
     private void sendHttpRequest() {
@@ -502,26 +745,25 @@ public class ETLJob implements Runnable {
     public static void main(String[] args) {
         String dataProcessDescriptor = XMLReader.getXMLContent("trx-f_917mt-dp-spec.xml");
         System.out.println(dataProcessDescriptor);
-        ETLJob dataProcessJob = ETLJob.getETLJob(dataProcessDescriptor, false);
+        ETLJob dataProcessJob = ETLJob.getETLJob(dataProcessDescriptor);
         System.out.println(dataProcessJob.getDataProcessDescriptor().get(ETLJob.DATA_ETL_DESC));
         System.out.println("parse ok");
     }
 
     public boolean rewaitByEtlIpPort(String EtlIpPort) {
-        if (etlTaskRuningSet.isEmpty()) {
+        if (etlTaskSet.isEmpty()) {
             return false;
         }
         etlTaskSetLock.lock();
         try {
-            for (Map.Entry<String, ETLTask> entry : etlTaskRuningSet.entrySet()) {
+            for (Map.Entry<String, ETLTask> entry : etlTaskSet.entrySet()) {
                 if (entry.getValue().etlIpPort.equals(EtlIpPort)) {
-                    ETLTask rewaitTask = etlTaskRuningSet.remove(entry.getKey());
+                    ETLTask rewaitTask = etlTaskSet.remove(entry.getKey());
                     if (rewaitTask == null) {
                         logger.info("can't rewaiting : fileString=" + entry.getKey() + ",etlIpPort=" + entry.getValue().etlIpPort);
                     } else {
-                        EtlWatcher.deleteTaskWatcher(rewaitTask.filePath);
+                        EtlWatcher.deleteTaskWatcher(rewaitTask.taskId + "_" + rewaitTask.dispatchTimes);
                         etlTaskWaitingList.add(rewaitTask);
-                        logger.info("data process task for data process job " + processJobInstanceID + " of " + rewaitTask.filePath + " is timeout and requeue");
                     }
                 }
             }
@@ -533,22 +775,207 @@ public class ETLJob implements Runnable {
         return true;
     }
 
-    public boolean rewaitByFilePath(String filePath) {
+    public boolean rewaitByTaskId(String taskId, boolean falied) {
         etlTaskSetLock.lock();
+        Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+        String sql = "";
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+        String date = sdf.format(new Date());
+
+        ETLTask rewaitTask = etlTaskSet.remove(taskId);
         try {
-            ETLTask rewaitTask = etlTaskRuningSet.remove(filePath);
             if (rewaitTask == null) {
-                logger.info("can't rewaiting : fileString= " + filePath + ",jobId = " + processJobInstanceID);
+                logger.info("can't rewaiting : fileString= " + taskId + ",jobId = " + processJobInstanceID);
             } else {
+                int redoTimes = 0;
+                synchronized(taskDispatchTimes) {
+                    if (taskDispatchTimes.containsKey(rewaitTask.taskId)) {
+                        redoTimes = taskDispatchTimes.get(rewaitTask.taskId);
+                    }
+                }
+                rewaitTask.dispatchTimes = redoTimes+1;
+                synchronized (taskFailedTimes) {
+                    rewaitTask.failedTimes = taskFailedTimes.get(rewaitTask.taskId);
+                }
+                sql = "insert into dp_task values ('" + rewaitTask.taskId + "', '" + processJobInstanceID + "', '" + rewaitTask.filePath + "','" + ETLTask.ETLTaskStatus.ENQUEUE + "','" + rewaitTask.etlIpPort + "',''," + rewaitTask.dispatchTimes + ", " + rewaitTask.failedTimes + ", to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS'))";
+                logger.info(sql);
+                try {
+                    dao.executeUpdate(sql);
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+
+                logger.info("task for etl job " + processJobInstanceID + " of " + rewaitTask.filePath + " has inserted into dp_task successfully");
                 etlTaskWaitingList.add(rewaitTask);
+                return true;
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         } finally {
+            Connection tmpConn = null;
+            try {
+                tmpConn = dao.getConnection();
+                tmpConn.close();
+            } catch (Exception ex) {
+                logger.warn("errors exists in closing sql connection", ex);
+            }
             etlTaskSetLock.unlock();
         }
-        return true;
+        
+        return false;
     }
 
     public void dataCollectJobInform() {
         stop = true;
+    }
+
+    public static int showTaskStatus(String jobId, String taskId, String ipPort) {
+        HttpClient httpClient = new DefaultHttpClient();
+        HttpPost httppost = new HttpPost("http://" + ipPort + "/resources/etltask/status");
+        InputStreamEntity reqEntity = new InputStreamEntity(new ByteArrayInputStream((jobId + "_" + taskId).getBytes()), -1);
+
+        reqEntity.setContentType("binary/octet-stream");
+        reqEntity.setChunked(true);
+        httppost.setEntity(reqEntity);
+        System.out.println(httppost.getURI() + " from askWhetherETLJobCompleted");
+        int taskStatus = 0;
+        try {
+            HttpResponse response = httpClient.execute(httppost);
+            StatusLine sl = response.getStatusLine();
+            if (sl.getStatusCode() == 200) {      //200 404
+                String result = HttpResponseParser.getResponseContent(response);
+                System.out.println("hhttphttpresult ====== == = = = = = " + result);
+                if (result.trim().equals("true")) {
+                    taskStatus = 1;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            httppost.releaseConnection();
+        }
+        System.out.println("taskStatus ====== == = = = = = " + taskStatus);
+        return taskStatus;
+    }
+
+    public ETLTask getETLTask(String taskId) {
+        return etlTaskSet.get(taskId);
+    }
+    
+    public boolean taskExists(String taskId) {
+        return taskDispatchTimes.containsKey(taskId);
+    }
+    
+    public int getTaskDispatchTimes(String taskId) {
+        synchronized(taskDispatchTimes) {
+            if (taskDispatchTimes.containsKey(taskId)) {
+                return taskDispatchTimes.get(taskId);
+            }
+        }
+        return 3;
+    }
+    
+    public void setTaskDispatchTimes(String taskId, int times) {
+        synchronized (taskDispatchTimes) {
+            if (taskDispatchTimes.containsKey(taskId)) {
+               taskDispatchTimes.put(taskId, times);
+            }
+        }
+    }
+    
+    public void appendFailedTask(ETLTask etlTask) {
+        failedETLTaskSet.put(etlTask.taskId, etlTask);
+    }
+    
+    public void appendSucceedTask(ETLTask etlTask) {
+        succeededETLTaskSet.put(etlTask.taskId, etlTask);
+    }
+    
+    public boolean addFailedTime(String taskId) {
+        synchronized(taskFailedTimes) {
+            if (taskFailedTimes.containsKey(taskId)) {
+                taskFailedTimes.put(taskId, taskFailedTimes.get(taskId)+1);
+                return true;
+            } else {
+                taskFailedTimes.put(taskId, taskFailedTimes.get(taskId)+1);
+                return true;
+            }
+        }
+    }
+    
+    public void setFailedTime(String taskId, int times) {
+        synchronized(taskFailedTimes) {
+            taskFailedTimes.put(taskId, times);
+        }
+    }
+    
+    public int getFailedTime(String taskId) {
+        synchronized(taskFailedTimes) {
+            if (taskFailedTimes.containsKey(taskId)) {
+                return taskFailedTimes.get(taskId);
+            }
+        }
+        return -1;
+    }
+
+    public int getTask2doNum() {
+        return task2doNum;
+    }
+    
+    public void setJobSucceedFalse() {
+        jobSucceed = false;
+    }
+    
+    public boolean pauseTask(String taskId, boolean timeOutTask) {
+        Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
+        String sql = "";
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+        String date = sdf.format(new Date());
+
+        ETLTask rewaitTask = etlTaskSet.remove(taskId);
+        try {
+            if (rewaitTask == null) {
+                logger.info("no task in the etlTaskSet to pause : taskId = " + taskId + ",jobId = " + processJobInstanceID);
+            } else {
+                jobSucceed = false;
+                failedETLTaskSet.put(rewaitTask.taskId, rewaitTask);
+                synchronized (taskFailedTimes) {
+                    rewaitTask.failedTimes = taskFailedTimes.get(rewaitTask.taskId);
+                }
+                if (timeOutTask) {
+                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "', failed_times = " + rewaitTask.failedTimes + ", update_time = to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS') where job_id = '" + processJobInstanceID + "' and task_id = '" + rewaitTask.taskId + "' and dispatch_times = '" + rewaitTask.dispatchTimes + "' and task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "'";
+                } else {
+                    taskDispatchTimes.remove(taskId);
+                    sql = "insert into dp_task values ('" + rewaitTask.taskId + "', '" + processJobInstanceID + "', '" + rewaitTask.filePath + "','" + ETLTask.ETLTaskStatus.ERRORTASK + "','" + rewaitTask.etlIpPort + "','" + rewaitTask.taskStat + "', " + rewaitTask.dispatchTimes + ", " + rewaitTask.failedTimes + ", to_date('" + date + "', 'YYYY-MM-DD HH24:MI:SS'))";
+                }
+                logger.info(sql);
+                try {
+                    dao.executeUpdate(sql);
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+                //fix me 调用etl的pause函数
+                logger.info("task for etl job " + processJobInstanceID + " of " + rewaitTask.filePath + " has been paused successfully");
+                return true;
+            }
+            
+            if (timeOutTask) {
+                //fix me 调用etl的stop
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            Connection tmpConn = null;
+            try {
+                tmpConn = dao.getConnection();
+                tmpConn.close();
+            } catch (Exception ex) {
+                logger.warn("errors exists in closing sql connection", ex);
+            }
+        }
+
+        return false;
     }
 }

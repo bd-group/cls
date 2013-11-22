@@ -5,9 +5,11 @@
 package cn.ac.iie.cls.cc.server;
 
 import cn.ac.iie.cls.cc.monitor.EtlWatcher;
+import cn.ac.iie.cls.cc.monitor.MasterWatcher;
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
 import cn.ac.iie.cls.cc.config.Configuration;
 import cn.ac.iie.cls.cc.master.CCHandler;
+import cn.ac.iie.cls.cc.monitor.ETLTaskWatcher;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.eclipse.jetty.server.Connector;
@@ -50,9 +52,13 @@ public class CLSCCServer {
 
     private static void startup() throws Exception {
         logger.info("starting cls cc server...");
+        EtlWatcher.StartWatching();
+        logger.info("starting cls cc MasterWatcher...");
+        MasterWatcher.startWatching();
+        logger.info("start cls cc MasterWatcher successfully");
         server.start();
         logger.info("start cls cc server successfully");
-	EtlWatcher.StartWatching();
+        //ETLTaskWatcher.startWatching();
         server.join();
     }
 
@@ -68,6 +74,8 @@ public class CLSCCServer {
         logger.info("initializng runtime enviroment...");
 	try{
 	    RuntimeEnv.initialize(conf);
+	    MasterWatcher.init(conf);
+            //ETLTaskWatcher.init(conf);
 	}catch(Exception ex){
             throw new Exception("initializng runtime enviroment is failed for"+ex.getMessage());
         }

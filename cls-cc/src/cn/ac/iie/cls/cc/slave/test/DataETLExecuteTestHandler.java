@@ -24,12 +24,14 @@ public class DataETLExecuteTestHandler implements SlaveHandler {
  //       String dataProcessDesc = XMLReader.getXMLContent("f_mobile_sinkhole-dp-spec.xml");
 //        String dataProcessDesc = XMLReader.getXMLContent("f_cymru_ddos_rsv2-dp-spec.xml");
 //	String dataProcessDesc = XMLReader.getXMLContent("f_917mt_phishing-dp-spec.xml");
-        String dataProcessDesc = XMLReader.getXMLContent("GlobalTableOuputOperator-test-specific.xml");
+//        String dataProcessDesc = XMLReader.getXMLContent("f_917mt_incident-dp-spec.xml");
 //        String dataProcessDesc = XMLReader.getXMLContent("f_917mt_webbackdoor-dp-spec.xml");
 //        String dataProcessDesc = XMLReader.getXMLContent("f_917mt_ceshi-dp-spec.xml");
 //        String dataProcessDesc = XMLReader.getXMLContent("f_abflow-dp-spec.xml");
 //        String dataProcessDesc = XMLReader.getXMLContent("f_bgpmon_incident-dp-spec.xml");
 //        String dataProcessDesc = XMLReader.getXMLContent("f_bgpmon_resource-dp-spec.xml");
+    	String dataProcessDesc = XMLReader.getXMLContent("testtest.xml");
+//    	String dataProcessDesc = XMLReader.getXMLContent("CSVFileInputOperator-test-specific.xml");
 
         DataETLExecuteHandler dataETLExecuteHandler = new DataETLExecuteHandler();
         return dataETLExecuteHandler.execute(dataProcessDesc);

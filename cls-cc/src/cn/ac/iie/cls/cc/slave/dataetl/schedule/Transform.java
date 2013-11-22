@@ -16,8 +16,8 @@ public class Transform {
      */
     static public EtlItem Trans(String str)
     {
-	String []dvd = str.split("\\|");
-	String []addr = dvd[0].split(":");
-	return new EtlItem(addr[0] , Integer.valueOf( addr[1]) , Integer.valueOf( dvd[1]) , Integer.valueOf(dvd[3]) , Long.valueOf(dvd[2]) , Integer.valueOf(dvd[4]) );
+		String []dvd = str.split("\\|");
+		String []addr = dvd[0].split(":");
+		return new EtlItem(addr[0] , Integer.valueOf( addr[1]) , Integer.valueOf( dvd[1]) , Integer.valueOf(dvd[3]) , Long.valueOf(dvd[2]) , Integer.valueOf(dvd[4]) );
     }
 }
