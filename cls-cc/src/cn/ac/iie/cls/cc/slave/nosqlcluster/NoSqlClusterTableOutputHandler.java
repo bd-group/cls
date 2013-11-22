@@ -12,7 +12,7 @@ import cn.ac.iie.cls.cc.slave.dataetl.ETLJobTracker;
 import cn.ac.iie.cls.cc.slave.dataetl.ETLTask;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.UUID; 
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.dom4j.Document;

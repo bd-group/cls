@@ -85,7 +85,7 @@ public class ETLJob implements Runnable {
 
     private ETLJob() {
         dispatchedTime = new Date();
-    }
+    } 
 
     public static ETLJob getETLJob(String pProcessJobDescriptor, boolean pNeedReport) {
         logger.debug(pProcessJobDescriptor);

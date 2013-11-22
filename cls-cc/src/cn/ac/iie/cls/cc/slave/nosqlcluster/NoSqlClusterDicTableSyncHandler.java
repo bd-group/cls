@@ -12,7 +12,6 @@ import static cn.ac.iie.cls.cc.slave.dataetl.ETLJob.JobStatus.RUNNING;
 import static cn.ac.iie.cls.cc.slave.dataetl.ETLJob.JobStatus.SUCCEED;
 import cn.ac.iie.cls.cc.slave.dataetl.ETLJobTracker;
 import cn.ac.iie.cls.cc.slave.dataetl.ETLTask;
-import static cn.ac.iie.cls.cc.slave.nosqlcluster.NoSqlClusterTableOutputHandler.logger;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
