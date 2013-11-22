@@ -309,27 +309,22 @@ public class ConnectionPool {
             return con.unwrap(iface);
         }
 
-        @Override
         public void setSchema(String schema) throws SQLException {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
 
-        @Override
         public String getSchema() throws SQLException {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
 
-        @Override
         public void abort(Executor executor) throws SQLException {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
 
-        @Override
         public void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
 
-        @Override
         public int getNetworkTimeout() throws SQLException {
             throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
         }
