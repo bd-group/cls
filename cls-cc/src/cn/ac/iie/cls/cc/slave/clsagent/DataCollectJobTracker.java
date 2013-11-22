@@ -6,6 +6,7 @@ package cn.ac.iie.cls.cc.slave.clsagent;
 
 import cn.ac.iie.cls.cc.commons.RuntimeEnv;
 import cn.ac.iie.cls.cc.slave.variablemanager.DateManager;
+import cn.ac.iie.cls.cc.util.HttpResponseParser;
 import cn.ac.iie.cls.cc.util.XMLReader;
 import cn.ac.iie.cls.cc.util.ZooKeeperOperator;
 
@@ -189,11 +190,14 @@ public class DataCollectJobTracker implements Runnable {
                     logger.warn("dispatch data collect job for data process job " + dataCollectJob.getProcessJobInstanceID() + " unsuccessfully for " + ex.getMessage(), ex);
                 } finally {
                     //end
-                    if (succeeded) {
-                        executingDataCollectJobSet.put(dataCollectJob.getProcessJobInstanceID(), dataCollectJob);
+                    try {
+                        if (succeeded) {
+                            executingDataCollectJobSet.put(dataCollectJob.getProcessJobInstanceID(), dataCollectJob);
+                        } else {
+                            dataCollectJobWaitingList.put(dataCollectJob);
+                        }
+                    } finally {
                         executingDataCollectJobSetLock.unlock();
-                    } else {
-                        dataCollectJobWaitingList.put(dataCollectJob);
                     }
                 }
             } catch (Exception ex) {
