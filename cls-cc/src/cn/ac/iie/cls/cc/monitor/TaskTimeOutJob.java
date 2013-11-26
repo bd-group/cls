@@ -11,7 +11,6 @@ import cn.ac.iie.cls.cc.slave.dataetl.ETLJob;
 import cn.ac.iie.cls.cc.slave.dataetl.ETLJobTracker;
 import cn.ac.iie.cls.cc.slave.dataetl.ETLTask;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import java.util.List;
@@ -44,6 +43,7 @@ public class TaskTimeOutJob implements Job {
             String jobId = job.getDescription();
             String jobKey = jec.getJobDetail().getKey().getName();
             String taskId = jobKey.substring(0, jobKey.length()-2);
+            int dispatchTimes = Integer.parseInt(jobKey.substring(jobKey.length()-1));
             System.out.println("task timeout job ================== " + jec.getJobDetail().getDescription() + ", " + jec.getJobDetail().getKey().getName());
             jec.getScheduler().pauseTrigger(jec.getTrigger().getKey());
             //    jec.getScheduler().unscheduleJob(jec.getTrigger().getKey());
@@ -66,7 +66,6 @@ public class TaskTimeOutJob implements Job {
             }
 
             if (!taskDone) {
-                //向etl发询问消息
                 ETLJobTracker ejt = ETLJobTracker.getETLJobTracker();
                 ETLJob etlJob = ejt.getJob(jobId);
                 ETLTask etlTask = null;
@@ -77,15 +76,16 @@ public class TaskTimeOutJob implements Job {
                     if (etlTask != null) {
                         //1.0版本直接重发
                         int redoTimes = etlJob.getTaskDispatchTimes(taskId);
-                        if (redoTimes < 3) {
-                            System.out.println("超时重发，1.0版本直接重发 " + redoTimes);
+                        if (redoTimes<=3 && !etlJob.taskExistsInWaitingList(etlTask)) {
+                            System.out.println("超时重发，1.0版本直接重发 " + (redoTimes-1));
                             
                             String sql = "";
                             Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
 
                             try {
-                                sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "' where job_id = '" + jobId + "' and task_id = '" + taskId + "' and task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "'"; 
+                                sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "' where job_id = '" + jobId + "' and task_id = '" + taskId + "' and task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' and dispatch_times = " + dispatchTimes; 
                                 dao.executeUpdate(sql);
+                                logger.info(sql);
                             } catch (SQLException e) {
                                 e.printStackTrace();
                             } catch (Exception e) {
@@ -100,11 +100,12 @@ public class TaskTimeOutJob implements Job {
                                 }
                             }
                             
-                            logger.info("this task is tasktimeout, and it is redispatched to etl : taskId = " + taskId + " redoTimes = " + redoTimes);
+                            logger.info("this task is tasktimeout, and it will be redispatched to etl : taskId = " + taskId + " redoTimes = " + redoTimes);
                             ejt.rewaitByJobTask(jobId, taskId, false);
                         } else {
                             logger.info("task run time out for 3 times, and it will be paused");
-                            etlJob.appendFailedTask(etlTask);
+                            //etlJob.appendFailedTask(etlTask);
+                            etlJob.pauseTask(taskId, true);
                         }
                     }
                 }

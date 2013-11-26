@@ -26,7 +26,7 @@ public class ETLTask {
     ETLTaskStatus taskStatus;
     String taskStat;
     String taskId;
-    int dispatchTimes = 0;
+    int dispatchTimes = 1;
     int failedTimes = 0;
     String etlIpPort;
 
@@ -35,11 +35,11 @@ public class ETLTask {
     }
 
     public ETLTask(String pFileName, ETLTaskStatus pTaskStatus) {
-        this(pFileName, pTaskStatus, "", "", "", 0, 0);
+        this(pFileName, pTaskStatus, "", "", "", 1, 0);
     }
     
     public ETLTask(String pFileName, ETLTaskStatus pTaskStatus, String pTaskId) {
-        this(pFileName, pTaskStatus, "", pTaskId,"", 0, 0);
+        this(pFileName, pTaskStatus, "", pTaskId,"", 1, 0);
     }
     
     public ETLTask(String pFileName, ETLTaskStatus pTaskStatus, String pTaskId, String pEtlIpPort, int pDispatchTimes, int pFailedTimes) {
@@ -121,5 +121,20 @@ public class ETLTask {
         
         public void setDispatchTimes(int dispatchTimes) {
             this.dispatchTimes = dispatchTimes;
+        }
+        
+        @Override
+        public boolean equals (Object other) {
+            boolean result = false;
+            if (other instanceof ETLTask) {
+                ETLTask etlTask = (ETLTask) other;
+                result = this.taskId.equals(etlTask.taskId);
+            }
+            return result;
+        }
+        
+        @Override
+        public int hashCode() {
+            return taskId.hashCode();
         }
 }

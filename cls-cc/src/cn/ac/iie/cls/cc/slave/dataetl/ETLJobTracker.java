@@ -4,7 +4,6 @@
  */
 package cn.ac.iie.cls.cc.slave.dataetl;
 
-import static cn.ac.iie.cls.cc.slave.dataetl.ETLJob.logger;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,9 +113,10 @@ public class ETLJobTracker implements Runnable {
                 etlJobRunner.start();
                 etlJobSetLock.lock();
                 etlJobSet.put(etlJob.getProcessJobInstanceID(), etlJob);
-                etlJobSetLock.unlock();
             } catch (Exception ex) {
                 ex.printStackTrace();
+            } finally {
+                etlJobSetLock.unlock();
             }
         }
     }

@@ -135,7 +135,7 @@ public class MasterWatcher {
                     String taskId = rs.getString("task_id");
                     String filePath = rs.getString("task_file_path");
                     String ipport = rs.getString("etlserver_id");
-                    int dispatchTimes = rs.getInt("redo_times");
+                    int dispatchTimes = rs.getInt("dispatch_times");
                     int failedTimes = rs.getInt("failed_times");
                     System.out.println("recovering task : job_id = " + jobId + " task_file_path = " + filePath);
                     if (!recoverMap.containsKey(jobId)) {
@@ -249,8 +249,8 @@ public class MasterWatcher {
                                 while (taskIdIt.hasNext()) {
                                     String taskId = taskIdIt.next();
                                     ETLTask etlTask = recoverEtlMap.get(taskId);
-                                    job.setFailedTime(taskId, etlTask.getFailedTimes());
-                                    job.setTaskDispatchTimes(taskId, etlTask.getDispatchTimes()-1);
+                                    //job.setFailedTime(taskId, etlTask.getFailedTimes());
+                                    //job.setTaskDispatchTimes(taskId, etlTask.getDispatchTimes()-1);
                                     resendEtlList.add(etlTask);
                                 }
                                 job.appendTask(resendEtlList);
@@ -330,6 +330,7 @@ public class MasterWatcher {
                 etlJob.setTask2doNum(rs.getInt("task_num"));
                 rs.getString("job_status");
                 etlJob.setJobStatus(ETLJob.JobStatus.RUNNING);
+                System.out.println("job_id = = = " + etlJob.getProcessJobInstanceID());
             }
             
             sql = "select count(distinct task_id) from dp_task where job_id = '" + jobId + "' and task_id not in (select task_id from dp_task where job_id = '" + jobId + "' and (task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' or task_status = '" + ETLTask.ETLTaskStatus.RECOVER + "'))";
@@ -337,6 +338,7 @@ public class MasterWatcher {
             rs = dao.executeQuery(sql);
             if (rs.next()) {
                 etlJob.setTask2doNum(etlJob.getTask2doNum() - rs.getInt(1));
+                System.out.println("task2doNum = = = " + etlJob.getTask2doNum());
             }
             sql  = "select * from dp_task where job_id = '" + jobId + "' and (task_status = '" + ETLTask.ETLTaskStatus.ERRORTASK + "' or task_status = '" + ETLTask.ETLTaskStatus.ABORT + "') and task_id not in "
                     + "(select distinct task_id from dp_task where job_id = '" + jobId + "' and (task_status = '" + ETLTask.ETLTaskStatus.SUCCEEDED + "' or task_status = '" + ETLTask.ETLTaskStatus.HALFSUCCEED + "'))";

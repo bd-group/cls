@@ -44,8 +44,8 @@ public class DataETLTaskReportHandler implements SlaveHandler {
             String taskId = reportItems[3];
             int dispatchTimes = Integer.parseInt(reportItems[8]);
             ETLJob etlJob = ETLJobTracker.getETLJobTracker().getJob(processJobInstanceId);
-            int failedTimes = etlJob.getFailedTime(taskId);
-            ETLTask etlTask = new ETLTask(filePath, ETLTask.ETLTaskStatus.ENQUEUE, reportItems[5], taskId, reportItems[6], dispatchTimes, failedTimes);
+            
+            ETLTask etlTask = new ETLTask(filePath, ETLTask.ETLTaskStatus.ENQUEUE, reportItems[5], taskId, reportItems[6], dispatchTimes, 0);
                 if (executeResult.equals("SUCCEEDED")) {
                     etlTask.taskStatus = ETLTask.ETLTaskStatus.SUCCEEDED;
                 } else if (executeResult.equals("HALFSUCCEEDED")) {
@@ -57,6 +57,7 @@ public class DataETLTaskReportHandler implements SlaveHandler {
                 etlTask.dispatchTimes = dispatchTimes;
             if (etlJob != null && etlJob.taskExists(etlTask.taskId)) {
                 List<ETLTask> etlTaskList = new ArrayList<ETLTask>();
+                etlTask.failedTimes = etlJob.getFailedTime(taskId);
                 etlTaskList.add(etlTask);
                 ETLJobTracker.getETLJobTracker().responseTask(processJobInstanceId, etlTaskList);
             } else {
@@ -65,7 +66,7 @@ public class DataETLTaskReportHandler implements SlaveHandler {
 
                 try {
                     //查找当前是否有状态为ENQUEUE和EXECUTING的任务
-                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.ABORT + "' where job_id = '" + processJobInstanceId + "' and task_id = '" + taskId + "' and redo_times = " + dispatchTimes + " and (task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' or task_status = '" + ETLTask.ETLTaskStatus.ENQUEUE + "' or task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "')";
+                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.ABORT + "' where job_id = '" + processJobInstanceId + "' and task_id = '" + taskId + "' and dispatch_times = " + dispatchTimes + " and (task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' or task_status = '" + ETLTask.ETLTaskStatus.ENQUEUE + "')"; //or task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "')";
                     logger.info(sql);
                     if (dao.executeUpdate(sql) > 0) {
                         logger.info("job not exists, set task status ABORT");
@@ -119,7 +120,7 @@ public class DataETLTaskReportHandler implements SlaveHandler {
                     }
                     
                     //设置为PRECOMMIT
-                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.PRECOMMIT + "' where job_id = '" + processJobInstanceId + "' and task_id = '" + taskId + "' and redo_times = " + redoTimes + " and (task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' or task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "')";
+                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.PRECOMMIT + "' where job_id = '" + processJobInstanceId + "' and task_id = '" + taskId + "' and dispatch_times = " + redoTimes + " and (task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "' or task_status = '" + ETLTask.ETLTaskStatus.TIMEOUT + "')";
                     logger.info(sql);
                     if (dao.executeUpdate(sql) > 0) {
                         result = "true";
@@ -150,7 +151,7 @@ public class DataETLTaskReportHandler implements SlaveHandler {
                 Dao dao = DaoPool.getDao(RuntimeEnv.METADB_CLUSTER);
 
                 try {
-                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.ABORT + "' where job_id = '" + processJobInstanceId + "' and task_id = '" + taskId + "' and redo_times = " + redoTimes + " + and task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "'";
+                    sql = "update dp_task set task_status = '" + ETLTask.ETLTaskStatus.ABORT + "' where job_id = '" + processJobInstanceId + "' and task_id = '" + taskId + "' and dispatch_times = " + redoTimes + " and task_status = '" + ETLTask.ETLTaskStatus.EXECUTING + "'";
                     logger.info(sql);
                     dao.executeUpdate(sql);
                 } catch (SQLException e) {
